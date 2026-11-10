@@ -61,3 +61,28 @@ android {
 }`;
 fs.writeFileSync(GR, gr);
 console.log('gradle: versão ' + ver + ' (code ' + code + ') + assinatura ok');
+
+// 4) ícone do app: copia os PNGs do badge NTG de apk-assets/ para os res/mipmap-*
+//    (sobrescreve os ícones default do Capacitor; Android escala pela densidade)
+const RES = path.join('android', 'app', 'src', 'main', 'res');
+const ASSETS = 'apk-assets';
+let copied = 0;
+if (fs.existsSync(ASSETS)) {
+  for (const dir of fs.readdirSync(ASSETS)) {
+    const src = path.join(ASSETS, dir);
+    if (fs.statSync(src).isDirectory()) {
+      // pasta de densidade (mipmap-*)
+      const dst = path.join(RES, dir);
+      fs.mkdirSync(dst, { recursive: true });
+      for (const f of fs.readdirSync(src)) { fs.copyFileSync(path.join(src, f), path.join(dst, f)); copied++; }
+    } else if (dir.endsWith('.xml')) {
+      // values/ic_launcher_background.xml (fundo escuro do adaptive icon)
+      const dst = path.join(RES, 'values', dir);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst); copied++;
+    }
+  }
+} else {
+  console.log('aviso: apk-assets/ ausente — mantendo ícones default');
+}
+console.log('icones: ' + copied + ' arquivos aplicados');
