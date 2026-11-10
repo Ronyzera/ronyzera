@@ -71,7 +71,8 @@ if (fs.existsSync(ASSETS)) {
   for (const dir of fs.readdirSync(ASSETS)) {
     const src = path.join(ASSETS, dir);
     if (fs.statSync(src).isDirectory()) {
-      // pasta de densidade (mipmap-*)
+      // pasta de densidade (mipmap-*) — outras pastas (ex.: store/) não vão pro res/
+      if (!dir.startsWith('mipmap')) continue;
       const dst = path.join(RES, dir);
       fs.mkdirSync(dst, { recursive: true });
       for (const f of fs.readdirSync(src)) { fs.copyFileSync(path.join(src, f), path.join(dst, f)); copied++; }
