@@ -11,13 +11,25 @@ permissions:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Instalar Capacitor
+        run: |
+          npm init -y > /dev/null
+          npm i --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+
+      - name: Montar projeto android
+        run: |
+          mkdir -p www
+          cp index.html www/index.html
+          npx cap add android 2>&1 | tee -a cap-add.log
+          tail -n 50 cap-add.log > $GITHUB_STEP_SUMMARY
 
       - name: Cache do keystore (assinatura estável entre builds)
         uses: actions/cache@v4
@@ -30,7 +42,6 @@ jobs:
       - name: Gerar keystore (só na primeira build)
         run: |
           if [ ! -f android/app/keystore.jks ]; then
-            mkdir -p android/app
             keytool -genkeypair -keystore android/app/keystore.jks \
               -alias ronyzera -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass ronyzera2026 -keypass ronyzera2026 \
@@ -39,17 +50,6 @@ jobs:
           else
             echo "KEYSTORE reutilizado do cache (assinatura estável)"
           fi
-
-      - name: Instalar Capacitor
-        run: |
-          npm init -y > /dev/null
-          npm i --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
-
-      - name: Montar projeto android
-        run: |
-          mkdir -p www
-          cp index.html www/index.html
-          npx cap add android
 
       - name: Patch (permissões, assinatura, versão)
         env:
@@ -60,7 +60,8 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          bash gradlew :app:assembleRelease --no-daemon
+          bash gradlew :app:assembleRelease --no-daemon 2>&1 | tee -a ../gradle.log
+          tail -n 60 ../gradle.log > $GITHUB_STEP_SUMMARY
 
       - name: Renomear APK
         run: |
@@ -81,7 +82,6 @@ jobs:
         run: |
           V=$(cat apk-version.txt)
           APK="RONYZERA-Android-v${V}.apk"
-          if gh release view "android" --json assets -q '.assets[].name' 2>/dev/null | grep -qF "$APK"; then
-            gh release delete-asset "android" "$APK" -y
-          fi
-          gh release upload "android" "$APK" --clobber || gh release create "android" "$APK" -R "${{ github.repository }}" --title "RONYZERA Android" --notes "APK do app — instalar permitindo apps de fontes desconhecidas no Android. Atualizações: baixe o novo APK e instale por cima."
+          gh release create android --title "RONYZERA Android" --notes "APK do app — instalar permitindo apps de fontes desconhecidas no Android. Atualização: baixe o novo APK e instale por cima." 2>/dev/null || true
+          gh release upload "android" "$APK" --clobber
+          echo "Publicado: https://github.com/${{ github.repository }}/releases/tag/android" >> $GITHUB_STEP_SUMMARY
