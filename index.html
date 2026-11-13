@@ -768,6 +768,28 @@ html[data-theme='claro'] #srvMenu button{color:#1c2230}
 .srvBkBtn{padding:9px 14px;border-radius:9px;border:1px solid rgba(0,246,255,.35);background:rgba(0,246,255,.10);color:var(--text);font:inherit;font-size:.86rem;font-weight:700;cursor:pointer;transition:background .15s,box-shadow .15s}
 .srvBkBtn:hover{background:rgba(0,246,255,.2);box-shadow:0 0 12px -4px var(--cyan)}
 html[data-theme='claro'] .srvBkBtn{color:#16202e;border-color:rgba(11,142,199,.4);background:rgba(11,142,199,.1)}
+/* Diagnóstico: microfone (nível ao vivo) + rede */
+#diagPanel{position:fixed;inset:0;z-index:2600;display:flex;align-items:center;justify-content:center}
+#diagPanel.hidden{display:none}
+#diagPanel .dgBack{position:absolute;inset:0;background:rgba(5,4,10,.66);backdrop-filter:blur(2px)}
+#diagPanel .dgBox{position:relative;width:min(430px,92vw);max-height:88vh;overflow-y:auto;padding:20px 22px;border-radius:14px;background:#160f26;border:1px solid rgba(238,230,255,.14);box-shadow:0 22px 50px -20px rgba(0,0,0,.85)}
+#diagPanel h3{margin:0 0 4px;font-size:1rem;color:var(--text)}
+#diagPanel .dgSub{color:var(--muted);font-size:.78rem;margin-bottom:2px}
+#diagPanel .dgClose{position:absolute;top:10px;right:12px;background:transparent;border:none;color:var(--muted);font-size:1rem;cursor:pointer;padding:4px 6px;border-radius:6px}
+#diagPanel .dgClose:hover{background:rgba(238,230,255,.08);color:var(--text)}
+#diagPanel .dgLbl{font-size:.68rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+#diagPanel .dgBar{height:12px;border-radius:7px;background:rgba(255,255,255,.08);overflow:hidden;border:1px solid var(--border)}
+#diagPanel .dgBar i{display:block;height:100%;width:0;background:var(--cyan);transition:width .08s linear}
+#diagPanel .dgInfo{font-size:.78rem;color:var(--muted);margin-top:7px;min-height:1.2em}
+#diagPanel .dgRows{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+#diagPanel .dgRow{display:flex;justify-content:space-between;gap:10px;font-size:.82rem;color:var(--text)}
+#diagPanel .dgOk{color:var(--ok)} #diagPanel .dgWarn{color:#ffb020} #diagPanel .dgBad{color:#ff4d6d}
+#diagPanel .dgHint{font-size:.8rem;color:var(--text);background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:9px;padding:9px 11px;margin-top:12px;line-height:1.35}
+#diagPanel .dgBtns{display:flex;gap:8px;margin-top:14px}
+#diagPanel .dgBtn{flex:1;padding:9px 12px;border-radius:9px;border:1px solid rgba(0,246,255,.35);background:rgba(0,246,255,.1);color:var(--text);font:inherit;font-size:.84rem;font-weight:700;cursor:pointer}
+#diagPanel .dgBtn:hover{background:rgba(0,246,255,.2)}
+html[data-theme='claro'] #diagPanel .dgBox{background:#fff;border-color:rgba(0,20,40,.12)}
+html[data-theme='claro'] #diagPanel .dgHint{background:#f5f7fd;color:#16202e}
 .rmDel{opacity:0;width:18px;height:18px;flex:0 0 18px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:var(--muted);font-size:.7rem;font-weight:700;cursor:pointer;transition:opacity .12s,background .12s,color .12s}
 .callItem:hover .rmDel{opacity:1}
 .rmDel:hover{background:rgba(255,51,64,.2);color:#ff4050}
@@ -1901,9 +1923,11 @@ async function svRoomDel(rid){
   svsBroadcast({ type:'sv-dir', list:[s], from:myName });
   botToast('🗑 Sala "' + r.name + '" excluída deste servidor.');
 }
-let PRESET_ROOMS = svRooms('ntg');
+// Começa já com as salas do servidor salvo: o switchServer abaixo não roda quando SRV.cur já é ele,
+// então antes as salas do RONYZERA apareciam em cima de outro servidor ao reabrir o app.
+let PRESET_ROOMS = svRooms(SRV.cur);
 railRender(); srvHeadRender();          // monta a barra de servidores e o cabeçalho logo na abertura
-try{ SRV.cur !== 'ntg' && switchServer(SRV.cur); }catch(e){}   // restaura o servidor ganhador da última vez
+try{ if(SRV.cur !== 'ntg'){ PRESET_ROOMS = svRooms(SRV.cur); renderPresetRooms(); } }catch(e){}   // restaura o servidor ganhador da última vez
 const SPK_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
 let inRoom = false;
 function inCallNow(){ return inRoom; }
@@ -2791,6 +2815,7 @@ function settingsModalEl(){
           '<div class="setAudioField"><label for="setMicSelect">Microfone</label><select id="setMicSelect"></select></div>' +
           '<div class="setAudioField"><label for="setSpkSelect">Alto-falante / headset</label><select id="setSpkSelect"></select></div>' +
           '<div class="setAudioField"><label for="setCamSelect">Câmera</label><select id="setCamSelect"></select></div>' +
+          '<div class="setAudioField"><button type="button" class="srvBkBtn" id="setMicTestBtn" style="margin-top:6px">🎙 Testar microfone e rede</button></div>' +
         '</div>' +
         '<div id="setPaneTema" class="setPane hidden">' +
           '<h3>Tema do app</h3>' +
@@ -2834,6 +2859,7 @@ function settingsModalEl(){
   m.querySelector('#setMicSelect').addEventListener('change', e => switchMic(e.target.value));
   m.querySelector('#setSpkSelect').addEventListener('change', e => switchSpeaker(e.target.value));
   m.querySelector('#setCamSelect').addEventListener('change', e => switchCam(e.target.value));
+  const micTestBtn = m.querySelector('#setMicTestBtn'); if(micTestBtn) micTestBtn.addEventListener('click', () => diagOpen());
   m.querySelectorAll('#setPanePerfil, #setPaneAudio, #setPaneTema').forEach(b => b.addEventListener('click', e => e.target.closest('[data-themesel]') && themeApply(e.target.closest('[data-themesel]').dataset.themesel)));
   return m;
 }
@@ -4126,6 +4152,13 @@ function handleCtlData(from, d){
     removeStageTile(from, 'screen');
     const a = $('audio-screen-'+from); if(a) a.remove();
     refreshAudioMutes();
+  } else if(d.type === 're-call'){
+    // o outro lado perdeu o áudio/vídeo: quem tem o stream disca de novo (o TURN/ICE trocou de rota)
+    const kind = d.kind === 'cam' ? 'cam' : 'mic';
+    const stream = kind === 'cam' ? localCam : localMic;
+    if(!stream || !knownPeers.has(from)) return;
+    if(Date.now() - (lastPlaced.get(from + '|' + kind) || 0) < 6000) return;
+    placeCall(from, kind, stream);
   } else if(d.type === 'kick'){
     setTimeout(() => { leaveRoom(); backToLobby('Você foi desconectado da sala por um administrador.'); }, 0);
   } else if(d.type === 'force-mute'){
@@ -4263,6 +4296,56 @@ function staggerCall(fn){
   if(at === now) run(); else setTimeout(run, at - now);
 }
 const lastPlaced = new Map();   // 'peerId|kind' -> quando a chamada foi feita
+// Recuperação rápida: reage na hora quando o ICE da chamada cai, sem esperar o tick do healNow.
+// - quem enviou o áudio/vídeo refaz a chamada;
+// - quem recebeu pede para o outro lado refazer (pelo canal de controle).
+const lastRecall = new Map();
+function tentarRefazerChamada(id, kind){
+  if(leaving || !joinedRoom || !inRoom) return;
+  const call = (outgoing.get(id) || {})[kind];
+  if(!call || !call.open) return;                       // nem abriu: o healNow cuida
+  const pc = call.peerConnection;
+  const st = pc && pc.iceConnectionState;
+  if(st === 'connected' || st === 'completed') return;
+  const stream = kind === 'cam' ? localCam : localMic;
+  if(!stream || !stream.getTracks().some(t => t.readyState === 'live')) return;
+  const chave = id + '|' + kind;
+  if(Date.now() - (lastPlaced.get(chave) || 0) < 6000) return;
+  try{ console.log('🔄 Recuperando chamada', chave, st); }catch(e){}
+  placeCall(id, kind, stream);
+}
+function tentarPedirRecarga(id, kind){
+  if(leaving || !inRoom || !knownPeers.has(id)) return;
+  const chave = id + '|' + kind;
+  if(Date.now() - (lastRecall.get(chave) || 0) < 6000) return;
+  lastRecall.set(chave, Date.now());
+  ctlSend(id, { type:'re-call', kind });
+}
+function watchCallIce(id, kind, call, sentido){
+  const pc = call && call.peerConnection;
+  if(!pc || !pc.addEventListener) return;
+  let pend = 0;
+  const limpar = () => { if(pend){ clearTimeout(pend); pend = 0; } };
+  const agendar = ms => {
+    limpar();
+    pend = setTimeout(() => {
+      pend = 0;
+      const pc2 = call.peerConnection;
+      const st = pc2 && pc2.iceConnectionState;
+      if(st === 'connected' || st === 'completed') return;
+      if(sentido === 'out') tentarRefazerChamada(id, kind);
+      else tentarPedirRecarga(id, kind);
+    }, ms);
+  };
+  pc.addEventListener('iceconnectionstatechange', () => {
+    const st = pc.iceConnectionState;
+    if(st === 'connected' || st === 'completed') limpar();
+    else if(st === 'failed') agendar(1200);        // falhou de vez: volta em ~1 s
+    else if(st === 'disconnected') agendar(4000);   // oscilou: dá 4 s para voltar sozinho
+    else if(st === 'closed') limpar();
+  });
+  if(call.on) call.on('close', limpar);
+}
 function placeCall(id, kind, stream){
   if(!outgoing.has(id)) outgoing.set(id, {});
   const old = outgoing.get(id)[kind];
@@ -4274,6 +4357,7 @@ function placeCall(id, kind, stream){
   lastPlaced.set(id+'|'+kind, Date.now());
   outgoing.get(id)[kind] = call;
   if(kind === 'screen') tuneForFramerate(call);
+  watchCallIce(id, kind, call, 'out');
 }
 function replaceMicTrack(newTrack){
   outgoing.forEach(o => {
@@ -4578,6 +4662,7 @@ function wirePeerHandlers(){
     if(prev && prev !== call){ try{ prev.close(); }catch(e){} }   // duas chamadas do mesmo tipo para a mesma pessoa: fica só a nova
     incoming.set(key, call);
     call.answer(undefined, kind === 'mic' ? { sdpTransform: sdpOpusVoice } : (kind === 'screen' ? { sdpTransform: sdpOpusMusic } : undefined));
+    watchCallIce(call.peer, kind, call, 'in');
     call.on('stream', stream => attachMedia(call.peer, kind, stream));
     call.on('close', () => {
       if(incoming.get(key) !== call) return;          // chamada já substituída por outra
@@ -5555,13 +5640,140 @@ function leaveRoom(){
   peer = null; dirConn = null; dirPeer = null; dirOwnerId = null; isDirectory = false; joinedRoom = false; inRoom = false;
   knownPeers.clear();
 }
-$('diagBtn').onclick = async () => {
-  const b = $('diagBtn'); b.disabled = true;
-  setStatus('Testando a sua conexão...');
-  const d = await diagnoseNetwork();
-  b.disabled = false;
-  setStatus(describeNet(d) + '  [endereços públicos: ' + d.srflx + ' · TURN: ' + (d.relay ? 'sim' : 'não') + ']');
-};
+/* ===== Diagnóstico: microfone (nível ao vivo) + rede ===== */
+const DG = { el:null, ctx:null, an:null, buf:null, raf:0, stream:null, pico:0, inicio:0, infoT:0, testando:false };
+function diagPanelEl(){
+  if(DG.el) return DG.el;
+  const d = document.createElement('div'); d.id = 'diagPanel'; d.className = 'hidden';
+  d.innerHTML =
+    '<div class="dgBack" data-dgclose="1"></div>' +
+    '<div class="dgBox">' +
+      '<button type="button" class="dgClose" data-dgclose="1" title="Fechar">✕</button>' +
+      '<h3>Testar microfone e rede</h3>' +
+      '<div class="dgSub">Descubra em segundos se o problema é o microfone, o Windows ou a sua internet.</div>' +
+      '<div class="dgLbl">Microfone</div>' +
+      '<div class="dgBar"><i id="dgMicFill"></i></div>' +
+      '<div class="dgInfo" id="dgMicInfo">Preparando o microfone...</div>' +
+      '<div class="dgBtns">' +
+        '<button type="button" class="dgBtn" id="dgMicBtn">Parar teste</button>' +
+        '<button type="button" class="dgBtn" id="dgMicSet">Trocar microfone</button>' +
+      '</div>' +
+      '<div class="dgLbl">Rede</div>' +
+      '<div class="dgRows" id="dgNetRows"><div class="dgRow"><span>Testando...</span><b>aguarde</b></div></div>' +
+      '<div class="dgHint" id="dgNetHint">Verificando se o WebRTC/UDP e o servidor TURN estão alcançáveis.</div>' +
+      '<div class="dgBtns"><button type="button" class="dgBtn" id="dgNetBtn">Testar rede de novo</button></div>' +
+    '</div>';
+  document.body.appendChild(d);
+  d.addEventListener('click', e => {
+    if(e.target.closest('[data-dgclose]')){ diagClose(); return; }
+    if(e.target.closest('#dgMicBtn')){ DG.testando ? diagMicStop() : diagMicStart(); return; }
+    if(e.target.closest('#dgMicSet')){ diagClose(); openSettings('audio'); return; }
+    if(e.target.closest('#dgNetBtn')) diagRedeTestar();
+  });
+  DG.el = d;
+  return d;
+}
+function diagOpen(){
+  diagPanelEl().classList.remove('hidden');
+  diagRedeTestar();
+  diagMicStart();
+}
+function diagClose(){
+  diagMicStop();
+  const d = document.getElementById('diagPanel'); if(d) d.classList.add('hidden');
+}
+async function diagMicStart(){
+  diagMicStop();
+  const fill = document.getElementById('dgMicFill'), info = document.getElementById('dgMicInfo');
+  DG.testando = true;
+  const btn = document.getElementById('dgMicBtn'); if(btn) btn.textContent = 'Parar teste';
+  if(info) info.textContent = 'Pedindo permissão do microfone...';
+  try{
+    DG.stream = await openMicStream(selectedMicId || undefined);
+  }catch(e){
+    DG.testando = false;
+    if(btn) btn.textContent = 'Tentar de novo';
+    if(info) info.textContent = '❌ ' + describeMicError(e);
+    return;
+  }
+  try{
+    const tr = DG.stream.getAudioTracks()[0];
+    const st = (tr && tr.getSettings) ? tr.getSettings() : {};
+    let rotulo = (tr && tr.label) || 'Microfone padrão';
+    try{
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const achado = devs.find(x => x.kind === 'audioinput' && x.deviceId === st.deviceId);
+      if(achado && achado.label) rotulo = achado.label;
+    }catch(e){}
+    DG.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    try{ await DG.ctx.resume(); }catch(e){}
+    const src = DG.ctx.createMediaStreamSource(DG.stream);
+    DG.an = DG.ctx.createAnalyser(); DG.an.fftSize = 1024;
+    src.connect(DG.an);
+    DG.buf = new Float32Array(DG.an.fftSize);
+    DG.pico = 0; DG.inicio = Date.now(); DG.infoT = 0;
+    if(info) info.textContent = '🎙 ' + rotulo + ' — fale alguma coisa.';
+    const passo = () => {
+      if(!DG.an || !DG.testando) return;
+      try{
+        DG.an.getFloatTimeDomainData(DG.buf);
+        let soma = 0;
+        for(let i = 0; i < DG.buf.length; i++) soma += DG.buf[i] * DG.buf[i];
+        const rms = Math.sqrt(soma / DG.buf.length);
+        const db = 20 * Math.log10(Math.max(rms, 1e-7));
+        const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+        DG.pico = Math.max(DG.pico, pct);
+        if(fill){
+          fill.style.width = pct.toFixed(0) + '%';
+          fill.style.background = pct > 75 ? 'var(--magenta)' : pct > 20 ? 'var(--cyan)' : 'var(--muted)';
+        }
+        const agora = Date.now();
+        if(info && agora - DG.infoT > 600){
+          DG.infoT = agora;
+          const seg = Math.round((agora - DG.inicio) / 1000);
+          if(DG.pico < 4 && seg >= 5) info.textContent = '⚠️ Nenhum som chegou. Confira o microfone escolhido, o volume no Windows e se outro app não está usando ele.';
+          else info.textContent = '🎙 ' + rotulo + ' — ' + (DG.pico < 4 ? 'fale alguma coisa...' : 'som detectado ✔');
+        }
+      }catch(e){}
+      DG.raf = requestAnimationFrame(passo);
+    };
+    passo();
+  }catch(e){
+    diagMicStop();
+    if(info) info.textContent = '❌ Não consegui medir o microfone: ' + ((e && e.message) || e);
+  }
+}
+function diagMicStop(){
+  DG.testando = false;
+  if(DG.raf){ cancelAnimationFrame(DG.raf); DG.raf = 0; }
+  if(DG.ctx){ try{ DG.ctx.close(); }catch(e){} DG.ctx = null; }
+  DG.an = null;
+  if(DG.stream){ try{ DG.stream.getTracks().forEach(t => t.stop()); }catch(e){} DG.stream = null; }
+  const fill = document.getElementById('dgMicFill'); if(fill) fill.style.width = '0%';
+  const btn = document.getElementById('dgMicBtn'); if(btn) btn.textContent = 'Testar microfone';
+}
+async function diagRedeTestar(){
+  const rows = document.getElementById('dgNetRows'), hint = document.getElementById('dgNetHint');
+  if(hint) hint.textContent = 'Testando... isso leva alguns segundos.';
+  if(rows) rows.innerHTML = '<div class="dgRow"><span>Testando rede...</span><b>aguarde</b></div>';
+  let d = null;
+  try{ d = await diagnoseNetwork(); }catch(e){}
+  if(!rows || !hint) return;
+  if(!d){
+    rows.innerHTML = '<div class="dgRow"><span>Não consegui testar</span><b class="dgBad">erro</b></div>';
+    hint.textContent = 'Tente de novo em instantes.';
+    return;
+  }
+  const clamp = n => Math.max(0, Math.round(n));
+  rows.innerHTML =
+    '<div class="dgRow"><span>WebRTC / UDP</span><b class="' + (d.host ? 'dgOk' : 'dgBad') + '">' + (d.host ? 'liberado' : 'bloqueado') + '</b></div>' +
+    '<div class="dgRow"><span>Endereços públicos (NAT)</span><b class="' + (d.srflx === 0 ? 'dgBad' : d.srflx > 1 ? 'dgWarn' : 'dgOk') + '">' + d.srflx + (d.srflx > 1 ? ' · NAT restrito/CGNAT' : '') + '</b></div>' +
+    '<div class="dgRow"><span>Servidor TURN</span><b class="' + (d.relay ? 'dgOk' : 'dgWarn') + '">' + (d.relay ? 'respondeu' : 'não respondeu') + '</b></div>';
+  hint.textContent = describeNet(d);
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') diagClose(); });
+window.addEventListener('pagehide', () => { try{ diagMicStop(); }catch(e){} });
+$('diagBtn').onclick = () => diagOpen();
 document.addEventListener('pointerdown', e => {
   document.querySelectorAll('.stile .controls.showvol').forEach(c => { if(!c.contains(e.target)) c.classList.remove('showvol'); });
 });
