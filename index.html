@@ -589,11 +589,11 @@ body:has(#joinCard:not(.hidden)) .brand h1{font-size:clamp(2.1rem,10.5vw,3.5rem)
 body:has(#joinCard:not(.hidden)) .brandChips{justify-content:center}
 @media (max-width:520px){.brand{padding:14px 18px 12px}}
 @media (prefers-reduced-motion:reduce){h1::before,h1::after,.dot.ok,.brand{animation:none}}
-/* ---- Chat Geral: abre sem entrar em sala ---- */
-#callCard.lobby.genview #chatPanel{display:flex}
-#callCard.genview #stageEmpty{display:none !important}
+/* ---- Chat Geral e chat do servidor: abrem sem entrar em sala ---- */
+#callCard.lobby.genview #chatPanel,#callCard.lobby.srvview #chatPanel{display:flex}
+#callCard.genview #stageEmpty,#callCard.srvview #stageEmpty{display:none !important}
 .chatHead #genClose{display:none;margin-left:auto;padding:4px 10px;line-height:1}
-#callCard.genview .chatHead #genClose{display:inline-flex}
+#callCard.genview .chatHead #genClose,#callCard.srvview .chatHead #genClose{display:inline-flex}
 
 /* ===== Layout estilo Discord (mesma paleta neon) ===== */
 body:has(#callCard:not(.hidden)){overflow:hidden}
@@ -747,16 +747,25 @@ body:has(#callCard:not(.hidden)) .wrap > .hr{display:none}
 .srvIcon.on::before{opacity:1}
 .srvIcon.on{border-radius:14px;box-shadow:0 0 16px rgba(255,31,201,.55)}
 .srvIcon .sIco{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+/* não lidas no chat do servidor (o chat de cada sala tem o balãozinho na lista lateral) */
+.srvIcon .svBadge{position:absolute;top:-5px;right:-5px;z-index:2;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--magenta);color:#05020c;font-size:.64rem;font-weight:800;line-height:17px;text-align:center;font-style:normal;font-family:'Rajdhani',sans-serif;box-shadow:0 0 0 2px rgba(13,8,24,.95),0 0 8px rgba(255,31,201,.7);pointer-events:none}
+.srvIcon .svBadge.ment{background:var(--danger);color:#fff}
+/* arrastar para reordenar */
+.srvIcon.dragging{opacity:.4}
+.srvIcon.dropAlvo{box-shadow:0 0 0 2px var(--cyan),0 0 14px rgba(0,246,255,.8);border-radius:12px}
+.callItem.dragging{opacity:.4}
+.callItem.dropAlvo{box-shadow:inset 0 2px 0 var(--cyan)}
 .srvIcon.plus{background:rgba(19,10,36,.9);border:2px dashed var(--muted);color:var(--muted);font-size:1.4rem;font-weight:700}
 .srvIcon.plus:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(0,246,255,.35)}
 .svhIco{width:30px;height:30px;margin-right:8px;border-radius:9px;object-fit:cover;box-shadow:0 0 8px rgba(0,246,255,.4)}
 /* menu do servidor: abre com o botão direito no ícone (ou no nome) do servidor */
-#srvMenu{position:fixed;z-index:3000;min-width:210px;max-width:260px;padding:6px;border-radius:11px;background:#160f26;border:1px solid rgba(238,230,255,.14);box-shadow:0 16px 34px -14px rgba(0,0,0,.8);display:flex;flex-direction:column;gap:2px}
+#srvMenu{position:fixed;z-index:3000;min-width:210px;max-width:260px;max-height:min(70vh,420px);overflow-y:auto;padding:6px;border-radius:11px;background:#160f26;border:1px solid rgba(238,230,255,.14);box-shadow:0 16px 34px -14px rgba(0,0,0,.8);display:flex;flex-direction:column;gap:2px}
 #srvMenu.hidden{display:none}
 #srvMenu .smTit{padding:6px 10px 8px;font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #srvMenu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;border-radius:7px;background:transparent;color:var(--text);font:inherit;font-size:.88rem;text-align:left;cursor:pointer}
 #srvMenu button:hover{background:rgba(0,246,255,.12);color:var(--cyan)}
 #srvMenu button.danger:hover{background:rgba(255,31,201,.16);color:var(--magenta)}
+#srvMenu button b{color:var(--cyan)}
 html[data-theme='claro'] #srvMenu{background:#fff;border-color:rgba(0,20,40,.12);box-shadow:0 16px 30px -16px rgba(0,20,40,.45)}
 html[data-theme='claro'] #srvMenu button{color:#1c2230}
 .srvHint{cursor:default;opacity:.62;font-size:.8rem}
@@ -795,7 +804,11 @@ html[data-theme='claro'] #diagPanel .dgHint{background:#f5f7fd;color:#16202e}
 .rmDel:hover{background:rgba(255,51,64,.2);color:#ff4050}
 .rmDel:target,.callItem:has(.rmDel:hover) .chatBtn{opacity:.3}
 #sidebar{width:264px;flex:0 0 264px;background:rgba(19,10,36,.8)}
-.srvHead{height:48px;cursor:default}
+.srvHead{height:48px;cursor:pointer}
+.srvHead:hover{background:rgba(255,255,255,.05)}
+.srvHead:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.srvHead .svhBadge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--magenta);color:#05020c;font-size:.68rem;font-weight:800;line-height:18px;text-align:center;font-style:normal}
+.srvHead:has(.svhBadge)::after{margin-left:6px}
 .srvHead::after{content:"";width:8px;height:8px;margin:-4px 2px 0 auto;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg)}
 .catHead{display:flex;align-items:center;gap:2px;padding:16px 8px 4px 0;font-size:.72rem;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;cursor:pointer;user-select:none}
 .catHead:hover{color:var(--text)}
@@ -1261,7 +1274,7 @@ const CHAT_MAX_IMG = 6 * 1024 * 1024, CHAT_MAX_VIDEO = 25 * 1024 * 1024, CHAT_CH
 const chatHistory = new Map();     // roomId -> [mensagens]
 const chatRecv = new Map();        // id da mensagem -> arquivo sendo recebido
 const chatSeen = new Set();
-let stageView = 'cards', chatUnread = 0, genUnread = 0, chatMention = 0, genMention = 0;   // stageView: 'cards' | 'chat' (chat da sala de voz) | 'gen' (Chat Geral)
+let stageView = 'cards', chatUnread = 0, genUnread = 0, chatMention = 0, genMention = 0;   // stageView: 'cards' | 'chat' (chat da sala de voz) | 'gen' (Chat Geral) | 'srv' (chat do servidor)
 const CG = { loaded:false, db:null, ids:new Set(), photos:new Map(), nm:new Map(), sending:new Set() };                 // histórico permanente do Chat Geral
 const CN = { peer:null, dirPeer:null, myId:null, conns:new Map(), names:new Map(), started:false, healT:null };   // rede própria do Chat Geral
 const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -1465,7 +1478,7 @@ function showLobby(){
   $('callCard').classList.remove('hidden');
   $('callCard').classList.add('lobby');
   $('leaveBtn').title = 'Sair da conta';
-  stageView = 'cards'; chatUnread = 0; chatMention = 0; $('callCard').classList.remove('chatview', 'genview');
+  stageView = 'cards'; chatUnread = 0; chatMention = 0; $('callCard').classList.remove('chatview', 'genview', 'srvview');
   $('stageEmptyMsg').textContent = 'Escolha uma sala na lista ao lado para entrar.';
   setStatus('Escolha uma sala para entrar');
   renderPresetRooms();
@@ -1534,8 +1547,14 @@ function svRooms(id){
   // Servidor novo começa SEM salas (você cria as suas). Só o servidor padrão RONYZERA tem as salas fixas.
   // Antes, qualquer servidor com a lista vazia herdava TODAS as salas padrão — era isso que fazia as
   // salas antigas aparecerem dentro de um servidor recém-criado.
-  if(Array.isArray(s.rooms)) return s.rooms;
-  return s.id === 'ntg' ? DEFAULT_ROOMS : [];
+  const base = Array.isArray(s.rooms) ? s.rooms : (s.id === 'ntg' ? DEFAULT_ROOMS : []);
+  const ordem = ordemLocalSalas(s.id);          // ordem escolhida arrastando (vale só neste app)
+  if(!ordem || !base.length) return base;
+  const mapa = new Map(base.map(r => [r.id, r]));
+  const out = [];
+  ordem.forEach(rid => { const r = mapa.get(rid); if(r){ out.push(r); mapa.delete(rid); } });
+  mapa.forEach(r => out.push(r));               // salas criadas depois entram no fim
+  return out;
 }
 function mySvFounder(id){ const s = srvGet(id); if(!s) return false; if(s.id === 'ntg') return isAdmin(); return String(myAccountName || myName).toLowerCase() === String(s.owner || '').toLowerCase(); }
 function srvsSave(){
@@ -1603,13 +1622,48 @@ function svsTo(conn){                        // anuncia meus servidores quando c
 }
 const railEl = $('srvRail');
 const SVR_PLUS = '<div class="srvIcon plus" id="svAdd" title="Criar servidor novo">＋</div>';
+// Badge nos ícones da barra: mensagens não lidas no CHAT DO SERVIDOR (o chat de cada sala
+// já tem o balãozinho na lista lateral).
+const srvUnread = new Map();   // srvId -> { n, ment }
+function srvUnreadGet(id){ return srvUnread.get(id) || { n:0, ment:0 }; }
+function srvUnreadAdd(id, ment){
+  if(!id) return;
+  const u = srvUnreadGet(id);
+  srvUnread.set(id, { n:u.n + 1, ment:u.ment + (ment ? 1 : 0) });
+  railRender(); srvHeadRender();
+}
+function srvUnreadClear(id){ if(srvUnread.delete(id)){ railRender(); srvHeadRender(); } }
+function srvBadgeHtml(id){
+  const u = srvUnreadGet(id);
+  if(!u.n) return '';
+  const ment = u.ment > 0;
+  return '<b class="svBadge' + (ment ? ' ment' : '') + '" title="' + (ment ? 'Você foi mencionado no chat do servidor' : u.n + ' mensagem(ns) não lida(s) no chat do servidor') + '">' + (ment ? '@' + (u.ment > 9 ? '9+' : u.ment) : (u.n > 9 ? '9+' : u.n)) + '</b>';
+}
 function railRender(){
   if(!railEl) return;
   railEl.innerHTML = SRV.list.map(s => {
     const on = SRV.cur === s.id ? ' on' : '';
-    return '<div class="srvIcon' + on + '" data-sv="' + esc(s.id) + '" title="' + esc(s.name) + ' — clique para abrir · botão direito para gerenciar">' +
-      (s.img ? '<img class="sIco" src="' + s.img + '" alt="">' : esc(String(s.name || '?').charAt(0).toUpperCase())) + '</div>';
+    return '<div class="srvIcon' + on + '" data-sv="' + esc(s.id) + '" draggable="true" title="' + esc(s.name) + ' — clique para abrir · botão direito para gerenciar · arraste para reordenar">' +
+      (s.img ? '<img class="sIco" src="' + s.img + '" alt="">' : esc(String(s.name || '?').charAt(0).toUpperCase())) + srvBadgeHtml(s.id) + '</div>';
   }).join('') + SVR_PLUS;
+}
+// Reordenar servidores: arrastando no PC ou pelas opções do menu (funciona no celular também).
+function moverServidorRel(id, passo){
+  const i = SRV.list.findIndex(x => x.id === id), j = i + passo;
+  if(i < 0 || j < 0 || j >= SRV.list.length) return;
+  const [s] = SRV.list.splice(i, 1);
+  SRV.list.splice(j, 0, s);
+  srvsSave(); railRender();
+  botToast((passo < 0 ? '◀ ' : '▶ ') + 'Servidor "' + (s.name || '') + '" movido.');
+}
+function reordenarServidor(origem, alvo){
+  if(!origem || !alvo || origem === alvo) return;
+  const i = SRV.list.findIndex(x => x.id === origem);
+  if(i < 0) return;
+  const [s] = SRV.list.splice(i, 1);
+  const j = SRV.list.findIndex(x => x.id === alvo);        // índice já sem o servidor arrastado
+  SRV.list.splice(j < 0 ? SRV.list.length : j, 0, s);
+  srvsSave(); railRender();
 }
 function switchServer(id){
   if(!srvGet(id) || id === SRV.cur) return;
@@ -1622,16 +1676,20 @@ function switchServer(id){
     PRESET_ROOMS = [{ id:roomId, name:r ? r.name : 'Sala em uso', icon:(r && r.icon) || '🔊' }].concat(PRESET_ROOMS);
   }
   railRender(); srvHeadRender(); renderPresetRooms();
+  if(stageView === 'srv'){                      // estava no chat do servidor: passa para o chat do novo servidor
+    if(id === 'ntg') setStageView('cards');
+    else { srvUnreadClear(id); chatRenderAll(); }
+  }
   try{ dxMemRender(); }catch(e){}
 }
-let srvPressOpened = false;
+let srvPressOpened = false, srvDragId = '';
 if(railEl){
   railEl.addEventListener('click', e => {
     const p = e.target.closest('#svAdd'); if(p){ svCreate(); return; }
     if(srvPressOpened){ srvPressOpened = false; return; }     // toque longo já abriu o menu: não troca de servidor
     const it = e.target.closest('.srvIcon[data-sv]'); if(it) switchServer(it.dataset.sv);
   });
-  // botão direito no ícone do servidor: trocar foto, criar salas, excluir
+  // botão direito no ícone do servidor: trocar foto, criar salas, excluir, mover
   railEl.addEventListener('contextmenu', e => {
     const it = e.target.closest('.srvIcon[data-sv]'); if(!it) return;
     e.preventDefault();
@@ -1647,9 +1705,38 @@ if(railEl){
     srvPressTimer = setTimeout(() => { srvPressTimer = null; srvPressOpened = true; setTimeout(() => { srvPressOpened = false; }, 700); srvMenuOpen(id, x, y); }, 520);
   });
   ['pointerup','pointercancel','pointermove','pointerleave'].forEach(ev => railEl.addEventListener(ev, () => { clearTimeout(srvPressTimer); srvPressTimer = null; }));
+  // arrastar para reordenar (PC): solta em cima de outro ícone e ele entra antes dele
+  const limparAlvoSrv = () => railEl.querySelectorAll('.srvIcon.dropAlvo').forEach(x => x.classList.remove('dropAlvo'));
+  railEl.addEventListener('dragstart', e => {
+    const it = e.target.closest && e.target.closest('.srvIcon[data-sv]'); if(!it) return;
+    srvDragId = it.dataset.sv;
+    try{ e.dataTransfer.setData('text/plain', 'srv:' + srvDragId); e.dataTransfer.effectAllowed = 'move'; }catch(err){}
+    it.classList.add('dragging');
+  });
+  railEl.addEventListener('dragover', e => {
+    const it = e.target.closest && e.target.closest('.srvIcon[data-sv]'); if(!srvDragId || !it) return;
+    e.preventDefault();
+    try{ e.dataTransfer.dropEffect = 'move'; }catch(err){}
+    limparAlvoSrv();
+    if(it.dataset.sv !== srvDragId) it.classList.add('dropAlvo');
+  });
+  railEl.addEventListener('dragleave', e => {
+    const it = e.target.closest && e.target.closest('.srvIcon[data-sv]'); if(it) it.classList.remove('dropAlvo');
+  });
+  railEl.addEventListener('drop', e => {
+    const it = e.target.closest && e.target.closest('.srvIcon[data-sv]'); if(!srvDragId || !it) return;
+    e.preventDefault();
+    const origem = srvDragId; srvDragId = '';
+    limparAlvoSrv();
+    reordenarServidor(origem, it.dataset.sv);
+  });
+  railEl.addEventListener('dragend', () => {
+    srvDragId = '';
+    railEl.querySelectorAll('.srvIcon.dragging,.srvIcon.dropAlvo').forEach(x => x.classList.remove('dragging', 'dropAlvo'));
+  });
 }
 // ----- menu de contexto (botão direito): serve para servidor e para sala -----
-let srvMenuTarget = '', svImgTarget = '', menuModo = 'srv';
+let srvMenuTarget = '', svImgTarget = '', menuModo = 'srv', srvMenuPos = null;
 function srvMenuEl(){
   let m = document.getElementById('srvMenu');
   if(m) return m;
@@ -1658,18 +1745,28 @@ function srvMenuEl(){
   m.addEventListener('pointerdown', e => e.stopPropagation());
   m.addEventListener('click', e => {
     const b = e.target.closest('button[data-smact]'); if(!b) return;
-    const act = b.dataset.smact, id = srvMenuTarget, modo = menuModo;
+    const act = b.dataset.smact, id = b.dataset.svid || srvMenuTarget, modo = menuModo;
     srvMenuClose();
+    if(modo === 'lista'){                     // lista de servidores (atalho, principalmente no celular)
+      if(act === 'pick') switchServer(id);
+      else if(act === 'novo') svCreate();
+      else if(act === 'gerir'){ const p = srvMenuPos || { x:12, y:60 }; srvMenuOpen(id, p.x, p.y); }
+      return;
+    }
     if(modo === 'sala'){                      // menu da sala
       if(act === 'convite') copiarConviteSala(id);
       else if(act === 'renomear') svRoomRename(id);
       else if(act === 'excluir-sala') svRoomDel(id);
+      else if(act === 'subir') moverSalaRel(id, -1);
+      else if(act === 'descer') moverSalaRel(id, 1);
       return;
     }
     if(act === 'open') switchServer(id);
     else if(act === 'img') svPickImage(id);
     else if(act === 'room') svRoomAdd(id);
     else if(act === 'del') svDel(id);
+    else if(act === 'esq') moverServidorRel(id, -1);
+    else if(act === 'dir') moverServidorRel(id, 1);
   });
   return m;
 }
@@ -1677,30 +1774,49 @@ function srvMenuClose(){ const m = document.getElementById('srvMenu'); if(m) m.c
 function menuPlace(m, x, y){
   m.classList.remove('hidden');
   const r = m.getBoundingClientRect();
-  m.style.left = Math.max(8, Math.min(window.innerWidth - r.width - 8, x)) + 'px';
-  m.style.top = Math.max(8, Math.min(window.innerHeight - r.height - 8, y)) + 'px';
+  srvMenuPos = { x: Math.max(8, Math.min(window.innerWidth - r.width - 8, x)), y: Math.max(8, Math.min(window.innerHeight - r.height - 8, y)) };
+  m.style.left = srvMenuPos.x + 'px';
+  m.style.top = srvMenuPos.y + 'px';
+}
+// Lista de servidores ao clicar no nome do servidor: no celular a coluna de ícones fica escondida,
+// então este menu é o jeito de trocar/criar servidor por lá.
+function srvListMenuOpen(x, y){
+  const m = srvMenuEl();
+  menuModo = 'lista'; srvMenuTarget = SRV.cur;
+  m.innerHTML = '<div class="smTit">Servidores</div>' +
+    SRV.list.map(s => '<button type="button" data-smact="pick" data-svid="' + esc(s.id) + '">' +
+      (s.id === SRV.cur ? '<b>' + esc(s.name || 'Servidor') + '</b>' : esc(s.name || 'Servidor')) + '</button>').join('') +
+    '<button type="button" data-smact="novo">＋ Criar servidor</button>' +
+    '<button type="button" data-smact="gerir">⚙️ Gerenciar servidor atual</button>';
+  menuPlace(m, x, y);
 }
 function srvMenuOpen(id, x, y){
   const s = srvGet(id); if(!s) return;
   menuModo = 'srv'; srvMenuTarget = id;
   const own = mySvFounder(id);
+  const pos = SRV.list.findIndex(v => v.id === id);
   const m = srvMenuEl();
   m.innerHTML = '<div class="smTit">' + esc(s.name || 'Servidor') + '</div>' +
     (id !== SRV.cur ? '<button type="button" data-smact="open">🔊 Abrir este servidor</button>' : '') +
     (own ? '<button type="button" data-smact="img">🖼 Trocar foto do servidor</button>' +
            '<button type="button" data-smact="room">＋ Criar sala de voz</button>' : '') +
+    (pos > 0 ? '<button type="button" data-smact="esq">◀ Mover para a esquerda</button>' : '') +
+    (pos >= 0 && pos < SRV.list.length - 1 ? '<button type="button" data-smact="dir">▶ Mover para a direita</button>' : '') +
     (own && id !== 'ntg' ? '<button type="button" class="danger" data-smact="del">🗑 Excluir servidor</button>' : '');
   menuPlace(m, x, y);
 }
-// Menu da sala: renomear, excluir e copiar convite (o ✕ pequeno deixou de ser o único jeito)
+// Menu da sala: renomear, excluir, copiar convite e ordenar (o ✕ pequeno deixou de ser o único jeito)
 function roomMenuOpen(rid, x, y){
   const s = srvGet(SRV.cur); if(!s) return;
   const r = (Array.isArray(s.rooms) ? s.rooms : []).find(v => v.id === rid); if(!r) return;
   menuModo = 'sala'; srvMenuTarget = rid;
   const own = mySvFounder(s.id);
+  const pos = svRooms(s.id).findIndex(v => v.id === rid);
   const m = srvMenuEl();
   m.innerHTML = '<div class="smTit">' + esc(r.name) + '</div>' +
     '<button type="button" data-smact="convite">🔗 Copiar link desta sala</button>' +
+    (pos > 0 ? '<button type="button" data-smact="subir">⬆ Mover para cima</button>' : '') +
+    (pos >= 0 && pos < svRooms(s.id).length - 1 ? '<button type="button" data-smact="descer">⬇ Mover para baixo</button>' : '') +
     (own ? '<button type="button" data-smact="renomear">✏️ Renomear sala</button>' : '') +
     (own && rid !== roomId ? '<button type="button" class="danger" data-smact="excluir-sala">🗑 Excluir sala</button>' : '');
   menuPlace(m, x, y);
@@ -1721,6 +1837,77 @@ function copiarConviteSala(rid){
     navigator.clipboard.writeText(txt).then(() => botToast('🔗 Link da sala copiado.'), fallback);
   } else fallback();
 }
+// ----- ordem das salas: arraste (PC) ou menu (celular) -----
+// O fundador reordena para todo o servidor; quem não é fundador guarda a ordem só no seu app.
+function ordemLocalSalas(id){
+  try{ const a = JSON.parse(localStorage.getItem('ntg_roomord_' + id) || 'null'); return Array.isArray(a) ? a : null; }
+  catch(e){ return null; }
+}
+function salvarOrdemLocalSalas(id, ids){
+  try{ localStorage.setItem('ntg_roomord_' + id, JSON.stringify(ids.slice(0, 30))); }catch(e){}
+}
+function salvarOrdemSalas(nova){
+  const s = srvGet(SRV.cur); if(!s) return;
+  if(mySvFounder(SRV.cur)){
+    s.rooms = nova; s.v = Date.now();
+    srvsSave();
+    svsBroadcast({ type:'sv-dir', list:[s], from:myName });
+  } else {
+    salvarOrdemLocalSalas(s.id, nova.map(r => r.id));
+  }
+  PRESET_ROOMS = svRooms(SRV.cur); renderPresetRooms();
+}
+function reordenarSala(origem, alvo){
+  if(!origem || !alvo || origem === alvo) return;
+  const lista = svRooms(SRV.cur).slice();
+  const i = lista.findIndex(r => r.id === origem);
+  if(i < 0) return;
+  const [r] = lista.splice(i, 1);
+  const j = lista.findIndex(x => x.id === alvo);            // índice já sem a sala arrastada
+  lista.splice(j < 0 ? lista.length : j, 0, r);
+  salvarOrdemSalas(lista);
+}
+function moverSalaRel(rid, passo){
+  const lista = svRooms(SRV.cur).slice();
+  const i = lista.findIndex(r => r.id === rid), j = i + passo;
+  if(i < 0 || j < 0 || j >= lista.length) return;
+  const [r] = lista.splice(i, 1);
+  lista.splice(j, 0, r);
+  salvarOrdemSalas(lista);
+  botToast((passo < 0 ? '⬆ ' : '⬇ ') + 'Sala "' + (r.name || '') + '" movida.');
+}
+let roomDragId = '';
+$('sbScroll').addEventListener('dragstart', e => {
+  const it = e.target.closest && e.target.closest('#sidebar .callItem[data-room]');
+  if(!it || e.target.closest('.chatBtn') || e.target.closest('.rmDel')) return;
+  roomDragId = it.dataset.room;
+  try{ e.dataTransfer.setData('text/plain', 'room:' + roomDragId); e.dataTransfer.effectAllowed = 'move'; }catch(err){}
+  it.classList.add('dragging');
+});
+$('sbScroll').addEventListener('dragover', e => {
+  const it = e.target.closest && e.target.closest('#sidebar .callItem[data-room]');
+  if(!roomDragId || !it) return;
+  e.preventDefault();
+  try{ e.dataTransfer.dropEffect = 'move'; }catch(err){}
+  $('sbScroll').querySelectorAll('.callItem.dropAlvo').forEach(x => x.classList.remove('dropAlvo'));
+  if(it.dataset.room !== roomDragId) it.classList.add('dropAlvo');
+});
+$('sbScroll').addEventListener('dragleave', e => {
+  const it = e.target.closest && e.target.closest('#sidebar .callItem[data-room]');
+  if(it) it.classList.remove('dropAlvo');
+});
+$('sbScroll').addEventListener('drop', e => {
+  const it = e.target.closest && e.target.closest('#sidebar .callItem[data-room]');
+  if(!roomDragId || !it) return;
+  e.preventDefault();
+  const origem = roomDragId; roomDragId = '';
+  $('sbScroll').querySelectorAll('.callItem.dropAlvo').forEach(x => x.classList.remove('dropAlvo'));
+  reordenarSala(origem, it.dataset.room);
+});
+$('sbScroll').addEventListener('dragend', () => {
+  roomDragId = '';
+  $('sbScroll').querySelectorAll('.callItem.dragging,.callItem.dropAlvo').forEach(x => x.classList.remove('dragging', 'dropAlvo'));
+});
 document.addEventListener('contextmenu', e => {
   const it = e.target.closest && e.target.closest('#sidebar .callItem[data-room]');
   if(!it) return;
@@ -1741,7 +1928,7 @@ function roomPressStart(e){
 document.addEventListener('pointerdown', e => {
   const m = document.getElementById('srvMenu');
   if(!m || m.classList.contains('hidden')) return;
-  if(m.contains(e.target) || (e.target.closest && (e.target.closest('.srvIcon[data-sv]') || e.target.closest('#sidebar .callItem[data-room]')))) return;
+  if(m.contains(e.target) || (e.target.closest && (e.target.closest('.srvIcon[data-sv]') || e.target.closest('.srvHead') || e.target.closest('#sidebar .callItem[data-room]')))) return;
   srvMenuClose();
 });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') srvMenuClose(); });
@@ -1793,14 +1980,32 @@ async function svCreate(){
 function srvHeadRender(){
   const head = document.querySelector('.srvHead'); if(!head) return;
   const s = srvGet(SRV.cur) || { name:'RONYZERA', owner:'rony', img:'' };
+  // no celular a coluna de ícones fica escondida: mostra aqui o total de mensagens não lidas dos outros servidores
+  let fora = 0;
+  srvUnread.forEach((u, id) => { if(id !== SRV.cur) fora += u.n; });
   head.innerHTML = (s.img ? '<img class="svhIco" src="' + s.img + '" alt="">' : '') +
-    '<span class="srvName">' + esc(s.name || 'RONYZERA') + '</span>';
-  head.title = 'Botão direito aqui (ou no ícone do servidor) para trocar a foto e criar salas';
+    '<span class="srvName">' + esc(s.name || 'RONYZERA') + '</span>' +
+    (fora ? '<b class="svhBadge" title="' + fora + ' mensagem(ns) não lida(s) em outros servidores">' + (fora > 9 ? '9+' : fora) + '</b>' : '');
+  head.title = 'Clique para ver/trocar de servidor · botão direito para foto e salas';
+  head.tabIndex = 0; head.setAttribute('role', 'button');
 }
 if(document.querySelector('.srvHead')){
-  document.querySelector('.srvHead').addEventListener('contextmenu', e => {
+  const head = document.querySelector('.srvHead');
+  head.addEventListener('contextmenu', e => {
     e.preventDefault();
     srvMenuOpen(SRV.cur, e.clientX, e.clientY);
+  });
+  head.addEventListener('click', () => {
+    const m = document.getElementById('srvMenu');
+    if(m && !m.classList.contains('hidden') && menuModo === 'lista'){ srvMenuClose(); return; }
+    const r = head.getBoundingClientRect();
+    srvListMenuOpen(r.left + 8, r.bottom + 4);
+  });
+  head.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    const r = head.getBoundingClientRect();
+    srvListMenuOpen(r.left + 8, r.bottom + 4);
   });
 }
 function svPickImage(svId){
@@ -2090,10 +2295,18 @@ function roomsHtml(rich){
   };
   const catHead = (cid, label) => `<div class="catHead${catCollapsed.has(cid) ? ' collapsed' : ''}" data-cat="${cid}" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>${label}</div>`;
   let out = catHead('text', 'Canais de texto');
-  if(!catCollapsed.has('text') || stageView === 'gen' || genUnread){
+  const srvChatSel = stageView === 'srv';
+  const srvU = srvUnreadGet(SRV.cur);
+  if(!catCollapsed.has('text') || stageView === 'gen' || genUnread || srvChatSel || srvU.n){
     out += `<div class="callRoom"><div class="callItem genItem${stageView === 'gen' ? ' sel' : ''}" data-gen="1" role="button" tabindex="0" title="Chat de texto geral — não precisa entrar numa sala">` +
       `<span class="spk">${HASH_SVG}</span><span class="ico">💬</span><span class="sep"></span><span class="rname">chat-geral</span>` +
       `${genUnread && stageView !== 'gen' ? (genMention ? `<b class="cbadge ment" title="Você foi mencionado">@${genMention > 9 ? '9+' : genMention}</b>` : `<b class="cbadge">${genUnread > 9 ? '9+' : genUnread}</b>`) : ''}</div></div>`;
+    // canal de texto do servidor atual (o RONYZERA já usa o chat-geral)
+    if(SRV.cur && SRV.cur !== 'ntg'){
+      out += `<div class="callRoom"><div class="callItem genItem${srvChatSel ? ' sel' : ''}" data-srvchat="1" role="button" tabindex="0" title="Chat de texto do servidor ${esc((srvGet(SRV.cur) || {}).name || '')}">` +
+        `<span class="spk">${HASH_SVG}</span><span class="ico">🗨️</span><span class="sep"></span><span class="rname">${esc(svChatNome(SRV.cur))}</span>` +
+        `${srvU.n && !srvChatSel ? (srvU.ment ? `<b class="cbadge ment" title="Você foi mencionado">@${srvU.ment > 9 ? '9+' : srvU.ment}</b>` : `<b class="cbadge">${srvU.n > 9 ? '9+' : srvU.n}</b>`) : ''}</div></div>`;
+    }
   }
   out += catHead('voice', 'Canais de voz');
   if(rich && inCall && !PRESET_ROOMS.some(r => r.id === roomId)){      // sala particular: aparece no topo
@@ -2102,7 +2315,7 @@ function roomsHtml(rich){
   const roomRows = PRESET_ROOMS.filter(r => !catCollapsed.has('voice') || (inCall && r.id === roomId) || membersOf(r.id).length).map(r => {
     const members =(rich && inCall && r.id === roomId) ? richMembersHtml() : plainMembersHtml(membersOf(r.id));
     const fund = mySvFounder(SRV.cur) && r.id !== roomId;      // founder vê o ✕ de excluir (menos na sala em que está)
-    return `<div class="callRoom"><div class="callItem${r.id === sel && stageView !== 'gen' ? ' sel' : ''}" data-room="${r.id}" role="button" tabindex="0">` +
+    return `<div class="callRoom"><div class="callItem${r.id === sel && stageView !== 'gen' && stageView !== 'srv' ? ' sel' : ''}" data-room="${r.id}" draggable="true" role="button" tabindex="0" title="Arraste para reordenar · botão direito para mais opções">` +
       `<span class="spk">${SPK_SVG}</span><span class="ico">${r.icon}</span><span class="sep"></span><span class="rname">${r.name}</span>${chatBtn(r.id)}` +
       (fund ? `<span class="rmDel" data-rmdel="${esc(r.id)}" role="button" tabindex="0" title="Excluir esta sala">✕</span>` : '') +
       `</div>${members}</div>`;
@@ -2163,6 +2376,7 @@ function renderUserPanel(){
   const chIco = $('chanIco'), chName = $('chanName');
   if(chIco && chName){
     if(stageView === 'gen'){ chIco.innerHTML = HASH_SVG; chName.textContent = 'chat-geral'; }
+    else if(stageView === 'srv'){ chIco.innerHTML = HASH_SVG; chName.textContent = svChatNome(SRV.cur); }
     else if(inRoom && roomId && stageView === 'chat'){ chIco.innerHTML = HASH_SVG; chName.textContent = rmName.toLowerCase().replace(/\s+/g, '-'); }
     else if(inRoom && roomId){ chIco.innerHTML = SPK_SVG; chName.textContent = rmName; }
     else { chIco.innerHTML = ''; chName.textContent = 'Início'; }
@@ -2354,6 +2568,7 @@ function pickPresetRoom(id){
 }
 function onRoomItem(it){
   if(it.dataset.gen){ setStageView(stageView === 'gen' ? 'cards' : 'gen'); return; }   // Chat Geral abre/fecha sem entrar em sala
+  if(it.dataset.srvchat){ setStageView(stageView === 'srv' ? 'cards' : 'srv'); return; }   // chat do servidor, idem
   if(inCallNow() && (it.classList.contains('static') || it.dataset.room === roomId)) setStageView('cards');   // nome da sala: volta aos cartões
   pickPresetRoom(it.dataset.room);
 }
@@ -4909,54 +5124,86 @@ function openChatFor(rid){
 }
 function setStageView(v){
   if(v === 'chat' && !roomId) return;
-  stageView = (v === 'chat' || v === 'gen') ? v : 'cards';
+  if(v === 'srv' && (SRV.cur === 'ntg' || !srvGet(SRV.cur))) return;
+  stageView = (v === 'chat' || v === 'gen' || v === 'srv') ? v : 'cards';
   $('callCard').classList.toggle('chatview', stageView !== 'cards');
   $('callCard').classList.toggle('genview', stageView === 'gen');
+  $('callCard').classList.toggle('srvview', stageView === 'srv');
   chatToggleEmojiPanel(false);
   if(stageView === 'chat'){ chatUnread = 0; chatMention = 0; }
   if(stageView === 'gen'){ genUnread = 0; genMention = 0; }
+  if(stageView === 'srv') srvUnreadClear(SRV.cur);
   if(stageView !== 'cards'){
     chatRenderAll();
     if(!/Android|iPhone|iPad/i.test(navigator.userAgent)) $('chatInput').focus();
   }
   renderPresetRooms();
 }
+// Canal de texto atual: 'gen' (Chat Geral), 'srv:<id>' (chat do servidor) ou a sala em uso (undefined).
+function chatNetAtual(){
+  return stageView === 'gen' ? 'gen' : stageView === 'srv' ? 'srv:' + SRV.cur : undefined;
+}
+function chatNetDe(msg){
+  if(msg.net === 'gen') return 'gen';
+  const n = String(msg.net || '');
+  return n.indexOf('srv:') === 0 ? n : roomId;
+}
+function chatEhRede(msg){ return msg.net === 'gen' || String(msg.net || '').indexOf('srv:') === 0; }
+// nome do canal de texto do servidor (estilo Discord: "chat-cla-do-ze")
+function svChatNome(id){
+  const s = srvGet(id) || {};
+  const slug = String(s.name || 'servidor').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 16);
+  return 'chat-' + (slug || 'servidor');
+}
 function chatNearBottom(){ const l = $('chatLog'); return l.scrollHeight - l.scrollTop - l.clientHeight < 140; }
 function chatScrollEnd(){ const l = $('chatLog'); l.scrollTop = l.scrollHeight; }
 function chatLinkify(t){ return t.replace(/(https?:\/\/[^\s<]+)/g, u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`); }
 
 function chatPush(msg, net){
-  const gen = net === 'gen' || msg.net === 'gen';
-  if(gen) msg.net = 'gen';
-  const key = gen ? 'gen' : roomId;
-  const arr = chatHistory.get(key) || [];
-  chatHistory.set(key, arr);
+  const pedido = net || msg.net;
+  const chave = pedido === 'gen' ? 'gen'
+    : (typeof pedido === 'string' && pedido.indexOf('srv:') === 0) ? pedido
+    : roomId;
+  msg.net = chave;
+  const gen = chave === 'gen', srv = !gen && String(chave).indexOf('srv:') === 0;
+  const arr = chatHistory.get(chave) || [];
+  chatHistory.set(chave, arr);
   arr.push(msg);
   if(gen) cgSave(msg);                               // Chat Geral: tudo fica salvo, sem limite
   else if(arr.length > 400){ const old = arr.shift(); if(old.url) try{ URL.revokeObjectURL(old.url); }catch(e){} }
-  if(gen ? stageView === 'gen' : stageView === 'chat') chatAppendEl(msg);
+  const visivel = gen ? stageView === 'gen' : srv ? (stageView === 'srv' && chave === 'srv:' + SRV.cur) : stageView === 'chat';
+  if(visivel) chatAppendEl(msg);
   else if(!msg.own && !msg.sys && !msg.bot){
     const mine = !!(msg.text && mentionsMe(msg.text));
-    if(gen){ genUnread++; if(mine) genMention++; } else { chatUnread++; if(mine) chatMention++; }
+    if(gen){ genUnread++; if(mine) genMention++; }
+    else if(srv){ srvUnreadAdd(chave.slice(4), mine); }
+    else { chatUnread++; if(mine) chatMention++; }
     renderPresetRooms();
   }
-  try{ mentionAlert(msg, gen); }catch(e){}
-  try{ dkNotifyChat(msg, gen); }catch(e){}
+  try{ mentionAlert(msg, gen, srv ? chave.slice(4) : null); }catch(e){}
+  try{ dkNotifyChat(msg, gen, srv ? chave.slice(4) : null); }catch(e){}
   return msg;
 }
-function chatSys(text){ chatPush({ id: chatUid(), sys: true, text, ts: Date.now() }, stageView === 'gen' ? 'gen' : undefined); }
+function chatSys(text){ chatPush({ id: chatUid(), sys: true, text, ts: Date.now() }, chatNetAtual()); }
 function chatRenderAll(){
-  const gen = stageView === 'gen';
-  $('chatTitle').textContent = gen ? '💬 Chat Geral' : '💬 Chat · ' + chatRoomTitle();
-  $('chatInput').placeholder = gen ? 'Escreva uma mensagem…' : 'Mensagem… (!play música)';
+  const gen = stageView === 'gen', srv = stageView === 'srv';
+  const titulo = gen ? '💬 Chat Geral'
+    : srv ? '💬 Chat · ' + ((srvGet(SRV.cur) || {}).name || 'Servidor')
+    : '💬 Chat · ' + chatRoomTitle();
+  $('chatTitle').textContent = titulo;
+  $('chatInput').placeholder = (gen || srv) ? 'Escreva uma mensagem…' : 'Mensagem… (!play música)';
   const hint = document.querySelector('.chatHint');
-  if(hint) hint.textContent = gen ? 'Fotos até 6 MB e vídeos até 25 MB' : 'Fotos até 6 MB e vídeos até 25 MB · o histórico fica só enquanto você está na sala';
+  if(hint) hint.textContent = gen ? 'Fotos até 6 MB e vídeos até 25 MB'
+    : srv ? 'Chat de texto deste servidor · fotos até 6 MB e vídeos até 25 MB'
+    : 'Fotos até 6 MB e vídeos até 25 MB · o histórico fica só enquanto você está na sala';
   const log = $('chatLog'); log.textContent = '';
-  const list = chatHistory.get(gen ? 'gen' : roomId) || [];
+  const key = chatNetAtual() || roomId;
+  const list = chatHistory.get(key) || [];
   list.forEach((m, i) => log.appendChild(chatBuildEl(m, list[i - 1])));
   chatScrollEnd();
 }
-function chatGroupKey(m){ return m.own ? 'me' : (m.net === 'gen' ? 'n:' + String(m.name || '').toLowerCase() : 'p:' + (m.from || m.name)); }
+function chatGroupKey(m){ return m.own ? 'me' : (chatEhRede(m) ? 'n:' + String(m.name || '').toLowerCase() : 'p:' + (m.from || m.name)); }
 function chatCompact(m, p){
   return !!p && !p.sys && !p.bot && !m.sys && !m.bot && chatGroupKey(p) === chatGroupKey(m) &&
     Math.abs(m.ts - p.ts) < 420000 && new Date(m.ts).toDateString() === new Date(p.ts).toDateString();
@@ -4964,7 +5211,7 @@ function chatCompact(m, p){
 function chatAppendEl(msg){
   const stick = chatNearBottom() || !!msg.own;
   msg.stick = stick;
-  const list = chatHistory.get(msg.net === 'gen' ? 'gen' : roomId) || [];
+  const list = chatHistory.get(chatNetDe(msg)) || [];
   const idx = list.lastIndexOf(msg);
   $('chatLog').appendChild(chatBuildEl(msg, idx > 0 ? list[idx - 1] : null));
   if(stick) chatScrollEnd();
@@ -4975,9 +5222,9 @@ function chatBuildEl(msg, prev){
   if(msg.sys){ el.className = 'cmsg sys'; el.textContent = msg.text; return el; }
   const compact = chatCompact(msg, prev);
   el.className = 'cmsg' + (msg.own ? ' own' : '') + (msg.sticker ? ' sticker' : '') + (compact ? ' compact' : ' first');
-  const gen = msg.net === 'gen';
-  const photo = msg.own ? myPhoto : (gen ? cgPhoto(msg.name) : knownPhotos.get(msg.from));
-  const nm = msg.own ? myName : (gen ? (msg.name || 'Participante') : (knownPeers.get(msg.from) || msg.name || 'Participante'));
+  const rede = chatEhRede(msg);                  // Chat Geral e chat do servidor usam a rede global
+  const photo = msg.own ? myPhoto : (rede ? cgPhoto(msg.name) : knownPhotos.get(msg.from));
+  const nm = msg.own ? myName : (rede ? (msg.name || 'Participante') : (knownPeers.get(msg.from) || msg.name || 'Participante'));
   const time = new Date(msg.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   el.innerHTML = (compact ? `<span class="cav sp"><i>${time}</i></span>` : `<span class="cav">${avatarHtml(nm, photo)}</span>`) +
     `<div class="cbody">` + (compact ? '' : `<div class="chead"><b class="cname">${nmWrap(nm)}</b><span class="ctime">${time}</span></div>`) +
@@ -5030,6 +5277,18 @@ function chatIncoming(from, d, net){
   const name = String(d.name || '').slice(0, 24);
   const ts = Number(d.ts) || Date.now();
   if(d.type === 'chat-sync-have'){ if(gen) cgOnHave(from, d); return; }
+  // chat de texto do servidor: circula pela rede global, mas só é aceito por quem tem o servidor
+  if(d.type === 'chat-srv'){
+    if(!gen) return;                                   // só chega pela rede global (nunca pelo canal da sala)
+    const sid = String(d.srv || '').slice(0, 20);
+    if(!sid || !srvGet(sid)) return;
+    if(typeof d.text !== 'string' || !d.text.trim() || chatSeen.has(d.id)) return;
+    chatSeen.add(d.id);
+    const nsIn = normNs(d.ns);
+    if(nsIn && name) nmStyles.set(name.trim().toLowerCase(), nsIn);
+    chatPush({ id: String(d.id), from, name, ts, text: d.text.slice(0, 1000), sticker: !!d.sticker, reply: dxCleanReply(d.reply) }, 'srv:' + sid);
+    return;
+  }
   if(d.type === 'chat'){
     if(typeof d.text !== 'string' || !d.text.trim() || chatSeen.has(d.id)) return;
     chatSeen.add(d.id);
@@ -5044,8 +5303,11 @@ function chatIncoming(from, d, net){
     if(!okMime || !(total > 0) || total > 4000 || !(size > 0) || size > limit || chatSeen.has(d.id)) return;
     chatSeen.add(d.id);
     const nsInF = normNs(d.ns); if(nsInF && name){ nmStyles.set(name.trim().toLowerCase(), nsInF); if(gen) cgPutNm(name, nsInF); }
+    const srvId = d.srv && srvGet(d.srv) ? String(d.srv).slice(0, 20) : '';
     const base = { id: String(d.id), from, name, ts, kind: d.kind, mime: d.mime, pct: 0, stat: 'Recebendo… 0%' };
-    const msg = gen ? (d.sync ? cgInsertSync(base) : chatPush(base, 'gen')) : chatPush(base);
+    const msg = srvId ? chatPush(base, 'srv:' + srvId)
+      : gen ? (d.sync ? cgInsertSync(base) : chatPush(base, 'gen'))
+      : chatPush(base);
     chatRecv.set(msg.id, { msg, chunks: new Array(total), got: 0, total, from });
   } else if(d.type === 'chat-chunk'){
     const r = chatRecv.get(String(d.id));
@@ -5077,11 +5339,13 @@ function chatSendText(){
   if(dxEditSend()) return;
   const inp = $('chatInput');
   const text = inp.value.trim().slice(0, 1000);
-  const gen = stageView === 'gen';
-  if(!text || (!gen && !roomId)) return;
-  if(!gen && botChatCommand(text)){ inp.value = ''; chatAutosize(); inp.focus(); return; }   // !play, !skip... não viram mensagem
-  const msg = chatPush({ id: chatUid(), own: true, name: myName, ts: Date.now(), text, reply: dxTakeReply() }, gen ? 'gen' : undefined);
+  const gen = stageView === 'gen', srv = stageView === 'srv';
+  if(!text || (!gen && !srv && !roomId)) return;
+  if(!gen && !srv && botChatCommand(text)){ inp.value = ''; chatAutosize(); inp.focus(); return; }   // !play, !skip... não viram mensagem
+  const net = gen ? 'gen' : srv ? 'srv:' + SRV.cur : undefined;
+  const msg = chatPush({ id: chatUid(), own: true, name: myName, ts: Date.now(), text, reply: dxTakeReply() }, net);
   if(gen) cnPeers().forEach(pid => cnSend(pid, { type: 'chat', id: msg.id, name: myName, ts: msg.ts, text, ns: normNs(myNm) || null, reply: msg.reply }));
+  else if(srv) cnPeers().forEach(pid => cnSend(pid, { type: 'chat-srv', srv: SRV.cur, id: msg.id, name: myName, ts: msg.ts, text, ns: normNs(myNm) || null, reply: msg.reply }));
   else chatPeers().forEach(pid => ctlSend(pid, { type: 'chat', id: msg.id, name: myName, ts: msg.ts, text, ns: normNs(myNm) || null, reply: msg.reply }));
   inp.value = ''; chatAutosize();
   inp.focus();
@@ -5120,8 +5384,8 @@ async function connSendBig(c, header, buf, total, onProg){
   }
 }
 async function chatSendFile(file){
-  const gen = stageView === 'gen';
-  if(!gen && (!roomId || !inCallNow())) throw new Error('entre em uma sala primeiro');
+  const gen = stageView === 'gen', srv = stageView === 'srv';
+  if(!gen && !srv && (!roomId || !inCallNow())) throw new Error('entre em uma sala primeiro');
   let blob = file, kind;
   if(/^image\//i.test(file.type)){
     kind = 'image';
@@ -5133,21 +5397,24 @@ async function chatSendFile(file){
     if(!CHAT_VID_RE.test(file.type)) throw new Error('formato de vídeo não suportado');
     if(file.size > CHAT_MAX_VIDEO) throw new Error('vídeo muito grande (máx. 25 MB)');
   } else throw new Error('só é possível enviar fotos e vídeos');
-  const peers = gen ? cnPeers() : chatPeers();
+  const rede = gen || srv;                       // Chat Geral e chat do servidor usam a rede global
+  const peers = rede ? cnPeers() : chatPeers();
   const mime = blob.type || file.type;
-  const msg = chatPush({ id: chatUid(), own: true, name: myName, ts: Date.now(), kind, mime, blob, url: URL.createObjectURL(blob), stat: peers.length ? 'Enviando… 0%' : '' }, gen ? 'gen' : undefined);
-  const sendBig = gen ? ((p, h, b, t, o) => connSendBig(CN.conns.get(p).conn, h, b, t, o)) : ctlSendBig;
+  const net = gen ? 'gen' : srv ? 'srv:' + SRV.cur : undefined;
+  const msg = chatPush({ id: chatUid(), own: true, name: myName, ts: Date.now(), kind, mime, blob, url: URL.createObjectURL(blob), stat: peers.length ? 'Enviando… 0%' : '' }, net);
+  const sendBig = rede ? ((p, h, b, t, o) => connSendBig(CN.conns.get(p).conn, h, b, t, o)) : ctlSendBig;
   if(!peers.length) return;
   const buf = await blob.arrayBuffer();
   const total = Math.ceil(buf.byteLength / CHAT_CHUNK);
   const header = { type: 'chat-file', id: msg.id, name: myName, ts: msg.ts, kind, mime, size: buf.byteLength, total, ns: normNs(myNm) || null };
+  if(srv) header.srv = SRV.cur;
   const sent = new Map(peers.map(p => [p, 0]));
   const upd = () => {
     const done = [...sent.values()].reduce((a, b) => a + b, 0);
     chatMsgStatus(msg, 'Enviando… ' + Math.round(done / (total * peers.length) * 100) + '%');
   };
   const res = await Promise.allSettled(peers.map(p => sendBig(p, header, buf, total, n => { sent.set(p, n); upd(); })));
-  const failed = res.map((r, i) => r.status === 'rejected' ? ((gen ? CN.names : knownPeers).get(peers[i]) || 'alguém') : null).filter(Boolean);
+  const failed = res.map((r, i) => r.status === 'rejected' ? ((rede ? CN.names : knownPeers).get(peers[i]) || 'alguém') : null).filter(Boolean);
   chatMsgStatus(msg, failed.length ? '⚠️ Não chegou para: ' + failed.join(', ') : '✓ Enviado');
   if(!failed.length) setTimeout(() => chatMsgStatus(msg, ''), 2500);
 }
@@ -5194,10 +5461,12 @@ function chatInsertEmoji(e){
   chatAutosize();
 }
 function chatSendSticker(e){
-  const gen = stageView === 'gen';
-  if(!gen && !roomId) return;
-  const msg = chatPush({ id: chatUid(), own: true, name: myName, ts: Date.now(), text: e, sticker: true }, gen ? 'gen' : undefined);
+  const gen = stageView === 'gen', srv = stageView === 'srv';
+  if(!gen && !srv && !roomId) return;
+  const net = gen ? 'gen' : srv ? 'srv:' + SRV.cur : undefined;
+  const msg = chatPush({ id: chatUid(), own: true, name: myName, ts: Date.now(), text: e, sticker: true }, net);
   if(gen) cnPeers().forEach(pid => cnSend(pid, { type: 'chat', id: msg.id, name: myName, ts: msg.ts, text: e, sticker: true, ns: normNs(myNm) || null }));
+  else if(srv) cnPeers().forEach(pid => cnSend(pid, { type: 'chat-srv', srv: SRV.cur, id: msg.id, name: myName, ts: msg.ts, text: e, sticker: true, ns: normNs(myNm) || null }));
   else chatPeers().forEach(pid => ctlSend(pid, { type: 'chat', id: msg.id, name: myName, ts: msg.ts, text: e, sticker: true, ns: normNs(myNm) || null }));
   chatToggleEmojiPanel(false);
 }
@@ -5297,7 +5566,7 @@ async function startCall(){
   $('stageEmptyMsg').textContent = STAGE_EMPTY_TXT;
   $('joinCard').classList.add('hidden');
   $('callCard').classList.remove('hidden');
-  if(stageView === 'gen') setStageView('cards');       // ao entrar numa sala, mostra a sala (o Chat Geral fecha)
+  if(stageView === 'gen' || stageView === 'srv') setStageView('cards');       // ao entrar numa sala, mostra a sala (chat-geral/servidor fecha)
   cnStart();
   try{ if(sessionStorage.getItem('ntg_open_chat') === '1'){ sessionStorage.removeItem('ntg_open_chat'); setStageView('chat'); } }catch(e){}
   setStatus('Conectando ao microfone...');
@@ -5856,7 +6125,11 @@ function dxFmt(t){
 function dxCleanReply(r){ return r && typeof r === 'object' && r.id ? { id: String(r.id).slice(0, 60), name: String(r.name || '').slice(0, 24), text: String(r.text || '').slice(0, 80) } : undefined; }
 function dxFind(id){ for(const a of chatHistory.values()){ const m = a.find(x => x.id === id); if(m) return m; } }
 function dxEl(id){ return document.querySelector('#chatLog [data-mid="' + CSS.escape(id) + '"]'); }
-function dxSend(o){ if(stageView === 'gen') cnPeers().forEach(p => cnSend(p, o)); else chatPeers().forEach(p => ctlSend(p, o)); }
+function dxSend(o){
+  if(stageView === 'srv') o = Object.assign({ srv: SRV.cur }, o);
+  if(stageView === 'gen' || stageView === 'srv') cnPeers().forEach(p => cnSend(p, o));
+  else chatPeers().forEach(p => ctlSend(p, o));
+}
 function dxName(m){ return m.own ? myName : (m.name || (knownPeers.get(m.from)) || 'Participante'); }
 function dxDecorate(el, msg){
   el.dataset.mid = msg.id;
@@ -5898,7 +6171,7 @@ function dxEditSend(){
 }
 function dxIncoming(from, d, net){
   const t = d.type, gen = net === 'gen';
-  if(t === 'chat-typing'){ DX.typing.set(from, { n: String(d.name || '').slice(0, 24), g: gen, t: Date.now() }); dxTypeRender(); setTimeout(dxTypeRender, 5200); return true; }
+  if(t === 'chat-typing'){ DX.typing.set(from, { n: String(d.name || '').slice(0, 24), g: gen, sv: String(d.srv || ''), t: Date.now() }); dxTypeRender(); setTimeout(dxTypeRender, 5200); return true; }
   if(t === 'chat'){ DX.typing.delete(from); dxTypeRender(); return false; }
   if(t !== 'chat-react' && t !== 'chat-edit' && t !== 'chat-del') return false;
   const m = dxFind(String(d.id)); if(!m) return true;
@@ -5910,8 +6183,13 @@ function dxIncoming(from, d, net){
   return true;
 }
 function dxTypeRender(){
-  const now = Date.now(), v = stageView === 'gen';
-  const n = [...DX.typing.values()].filter(x => now - x.t < 5000 && x.g === v).map(x => x.n);
+  const now = Date.now(), gen = stageView === 'gen', sv = stageView === 'srv' ? SRV.cur : '';
+  const n = [...DX.typing.values()].filter(x => {
+    if(now - x.t >= 5000) return false;
+    if(sv) return x.sv === sv;
+    if(gen) return x.g && !x.sv;
+    return !x.g && !x.sv;
+  }).map(x => x.n);
   $('dxTyping').innerHTML = !n.length ? '' : '<span class="dxDots"><i></i><i></i><i></i></span><span><b>' + (n.length > 2 ? 'Várias pessoas' : n.map(esc).join(' e ')) + '</b> ' + (n.length > 1 ? 'estão digitando…' : 'está digitando…') + '</span>';
 }
 // ================= APP DE WINDOWS: atalhos, push-to-talk, avisos e menções =================
@@ -5960,7 +6238,7 @@ document.addEventListener('keyup', e => { if(pttOn() && DK.cfg.ptt.kind === 'cod
 window.addEventListener('blur', () => { if(pttOn() && DK.cfg.ptt.kind === 'code') pttSet(false); });
 
 // avisos do Windows
-function dkNotifyChat(msg, gen){
+function dkNotifyChat(msg, gen, srvId){
   if(!window.desktop || !DK.cfg || !DK.cfg.notifications) return;
   if(msg.own || msg.sys || msg.bot) return;
   if(document.hasFocus()) return;
@@ -5968,8 +6246,9 @@ function dkNotifyChat(msg, gen){
   const mine = !!(msg.text && mentionsMe(msg.text));
   if(mode === 'mention' && !mine) return;
   if(mode === 'off') return;
-  const nm = gen ? (msg.name || 'Participante') : (knownPeers.get(msg.from) || msg.name || 'Participante');
-  const where = gen ? 'Chat Geral' : chatRoomTitle();
+  const rede = gen || !!srvId;
+  const nm = rede ? (msg.name || 'Participante') : (knownPeers.get(msg.from) || msg.name || 'Participante');
+  const where = srvId ? ('Servidor · ' + (((srvGet(srvId) || {}).name) || '')) : gen ? 'Chat Geral' : chatRoomTitle();
   const body = msg.text ? msg.text : (msg.kind === 'video' ? '🎞️ Enviou um vídeo' : '🖼️ Enviou uma foto');
   window.desktop.notify((mine ? '🔔 ' + nm + ' mencionou você' : nm) + ' · ' + where, body);
 }
@@ -5996,15 +6275,20 @@ function mentionsMe(text){
 }
 // aviso dentro do app: toast + som quando alguém te menciona e você não está olhando aquele chat
 let mentionToastT = null;
-function mentionAlert(msg, gen){
+function mentionAlert(msg, gen, srvId){
   if(msg.own || msg.sys || msg.bot || !msg.text || !mentionsMe(msg.text)) return;
-  if(gen ? stageView === 'gen' : stageView === 'chat'){ if(document.hasFocus()) return; }
-  const nm = gen ? (msg.name || 'Participante') : (knownPeers.get(msg.from) || msg.name || 'Participante');
-  const where = gen ? 'chat-geral' : chatRoomTitle();
+  const visivel = srvId ? (stageView === 'srv' && SRV.cur === srvId) : (gen ? stageView === 'gen' : stageView === 'chat');
+  if(visivel && document.hasFocus()) return;
+  const rede = gen || !!srvId;
+  const nm = rede ? (msg.name || 'Participante') : (knownPeers.get(msg.from) || msg.name || 'Participante');
+  const where = srvId ? ('servidor ' + (((srvGet(srvId) || {}).name) || '')) : gen ? 'chat-geral' : chatRoomTitle();
   let t = document.getElementById('mentionToast');
   if(!t){ t = document.createElement('div'); t.id = 'mentionToast'; t.className = 'hidden'; document.body.appendChild(t); }
   t.innerHTML = '<b>🔔 ' + esc(nm) + ' mencionou você · ' + esc(where) + '</b><span>' + esc(msg.text) + '</span>';
-  t.onclick = () => { t.classList.add('hidden'); try{ setStageView(gen ? 'gen' : 'chat'); }catch(e){} };
+  t.onclick = () => {
+    t.classList.add('hidden');
+    try{ if(srvId && srvId !== SRV.cur) switchServer(srvId); setStageView(srvId ? 'srv' : gen ? 'gen' : 'chat'); }catch(e){}
+  };
   t.classList.remove('hidden');
   clearTimeout(mentionToastT); mentionToastT = setTimeout(() => t.classList.add('hidden'), 7000);
   if(dxEff() !== 'dnd') dkBeep(true);                 // não perturbe silencia o som
@@ -6185,7 +6469,7 @@ async function dkCapture(which){
   const inp = k.querySelector('input'), ul = k.querySelector('ul'); let items = [], sel = 0;
   const draw = () => {
     const q = inp.value.trim().toLowerCase();
-    items = [...document.querySelectorAll('#sidebar .callItem[data-room], #sidebar .callItem[data-gen]')].map(el => ({ el, n: (el.querySelector('.rname') || {}).textContent || '', v: el.hasAttribute('data-room') })).filter(x => x.n && x.n.toLowerCase().includes(q));
+    items = [...document.querySelectorAll('#sidebar .callItem[data-room], #sidebar .callItem[data-gen], #sidebar .callItem[data-srvchat]')].map(el => ({ el, n: (el.querySelector('.rname') || {}).textContent || '', v: el.hasAttribute('data-room') })).filter(x => x.n && x.n.toLowerCase().includes(q));
     sel = Math.min(sel, Math.max(0, items.length - 1));
     ul.innerHTML = items.length ? items.map((x, i) => '<li class="' + (i === sel ? 'sel' : '') + '" data-i="' + i + '">' + (x.v ? SPK_SVG : HASH_SVG) + esc(x.n) + '</li>').join('') : '<li>Nenhum canal encontrado</li>';
   };
@@ -6217,7 +6501,8 @@ async function dkCapture(which){
     try{
       if(inRoom !== was){ was = !!inRoom; last = knownPeers.size; tone(was ? 520 : 660, was ? 780 : 440); }
       else if(inRoom && knownPeers.size !== last){ tone(knownPeers.size > last ? 520 : 660, knownPeers.size > last ? 780 : 440); last = knownPeers.size; }
-      const n = chatUnread + genUnread; document.title = (n ? '(' + n + ') ' : '') + 'RONYZERA';
+      const svN = [...srvUnread.values()].reduce((a, u) => a + u.n, 0);
+      const n = chatUnread + genUnread + svN; document.title = (n ? '(' + n + ') ' : '') + 'RONYZERA';
     }catch(e){}
   }, 700);
 })();
@@ -6358,7 +6643,7 @@ setTimeout(dxDetectGame, 2500); setInterval(dxDetectGame, 15000);
   sync();
   $('dxMembers').addEventListener('click', e => {
     const m = e.target.closest('.dxM'); if(!m) return;
-    if(!(stageView === 'gen' || stageView === 'chat')) return;
+    if(!(stageView === 'gen' || stageView === 'srv' || stageView === 'chat')) return;
     openProfile(m.dataset.n);
   });
   // menu de status (clique no seu avatar/nome)

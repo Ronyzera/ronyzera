@@ -1,12 +1,13 @@
 {
   "name": "ronyzera",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "RONYZERA - voz, chat, tela e musica",
   "main": "main.js",
   "author": "RONY",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
+    "test": "node test/run.js",
     "build": "electron-builder --win nsis --publish never",
     "publish": "electron-builder --win nsis --publish always"
   },
@@ -15,7 +16,8 @@
   },
   "devDependencies": {
     "electron": "^43.4.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "jsdom": "^31.0.0"
   },
   "build": {
     "appId": "com.ronyzera.app",
