@@ -1,0 +1,87 @@
+name: APK RONYZERA
+
+on:
+  push:
+    branches: [main]
+    paths: ['index.html', 'apk-version.txt', '.github/workflows/apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar Capacitor
+        run: |
+          npm init -y > /dev/null
+          npm i --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+
+      - name: Montar projeto android
+        run: |
+          mkdir -p www
+          cp index.html www/index.html
+          npx cap add android 2>&1 | tee -a cap-add.log
+          tail -n 50 cap-add.log > $GITHUB_STEP_SUMMARY
+
+      - name: Cache do keystore (assinatura estável entre builds)
+        uses: actions/cache@v4
+        with:
+          path: android/app/keystore.jks
+          key: ronyzera-keystore-v1
+          restore-keys: |
+            ronyzera-keystore-
+
+      - name: Gerar keystore (só na primeira build)
+        run: |
+          if [ ! -f android/app/keystore.jks ]; then
+            keytool -genkeypair -keystore android/app/keystore.jks \
+              -alias ronyzera -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass ronyzera2026 -keypass ronyzera2026 \
+              -dname "CN=RONYZERA, OU=NTG, O=Ronyzera, L=Brasil, C=BR"
+            echo "KEYSTORE NOVO gerado nesta build"
+          else
+            echo "KEYSTORE reutilizado do cache (assinatura estável)"
+          fi
+
+      - name: Patch (permissões, assinatura, versão)
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: node apk-patch.js
+
+      - name: Gradle assembleRelease
+        run: |
+          cd android
+          chmod +x gradlew
+          bash gradlew :app:assembleRelease --no-daemon > ../gradle.log 2>&1 || { tail -n 120 ../gradle.log; exit 1; }
+          tail -n 40 ../gradle.log
+
+      - name: Renomear APK
+        run: |
+          V=$(cat apk-version.txt)
+          cp android/app/build/outputs/apk/release/app-release.apk "RONYZERA-Android-v${V}.apk"
+          ls -la RONYZERA-Android-v${V}.apk
+
+      - name: Guardar keystore como artefato (backup da assinatura)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronyzera-keystore
+          path: android/app/keystore.jks
+          retention-days: 90
+
+      - name: Publicar APK na release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(cat apk-version.txt)
+          APK="RONYZERA-Android-v${V}.apk"
+          gh release create android --title "RONYZERA Android" --notes "APK do app — instalar permitindo apps de fontes desconhecidas no Android. Atualização: baixe o novo APK e instale por cima." 2>/dev/null || true
+          gh release upload "android" "$APK" --clobber
+          echo "Publicado: https://github.com/${{ github.repository }}/releases/tag/android" >> $GITHUB_STEP_SUMMARY

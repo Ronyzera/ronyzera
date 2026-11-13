@@ -1,0 +1,6 @@
+{
+  "appId": "com.ronyzera.app",
+  "appName": "RONYZERA",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}

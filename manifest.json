@@ -1,0 +1,16 @@
+{
+  "name": "RONYZERA",
+  "short_name": "RONYZERA",
+  "description": "Voz, chat e música P2P da Galeia NTG",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05020c",
+  "theme_color": "#05020c",
+  "icons": [
+    { "src": "ronyzera-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "ronyzera-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

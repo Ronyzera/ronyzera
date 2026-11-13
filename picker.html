@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>O que você quer transmitir?</title>
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;padding:18px;background:#130a24;color:#f1ebff;font-family:'Segoe UI',system-ui,sans-serif}
+  h1{margin:0 0 4px;font-size:18px;font-weight:600}
+  p{margin:0 0 14px;color:#9183b8;font-size:13px}
+  h2{margin:16px 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#9183b8}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  button{display:block;width:100%;padding:8px;text-align:left;color:inherit;font:inherit;background:#19102e;border:1px solid rgba(238,230,255,.1);border-radius:8px;cursor:pointer}
+  button:hover,button:focus-visible{border-color:#00f6ff;outline:none;background:#1f1338}
+  img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#05020c;border-radius:4px}
+  span{display:block;margin-top:6px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .foot{margin-top:18px;text-align:right}
+  .foot button{display:inline-block;width:auto;padding:8px 16px}
+</style>
+</head>
+<body>
+<h1>O que você quer transmitir?</h1>
+<p>Escolha uma tela inteira ou uma janela.</p>
+<h2>Telas</h2><div class="grid" id="screens"></div>
+<h2>Janelas</h2><div class="grid" id="windows"></div>
+<div class="foot"><button id="cancel">Cancelar</button></div>
+<script>
+const mk = s => {
+  const b = document.createElement('button');
+  const i = document.createElement('img'); i.src = s.thumb; i.alt = '';
+  const n = document.createElement('span'); n.textContent = s.name; n.title = s.name;
+  b.append(i, n);
+  b.onclick = () => window.picker.choose(s.id);
+  return b;
+};
+window.picker.list().then(list => {
+  const sc = document.getElementById('screens'), wi = document.getElementById('windows');
+  list.forEach(s => (s.screen ? sc : wi).appendChild(mk(s)));
+});
+document.getElementById('cancel').onclick = () => window.close();
+document.addEventListener('keydown', e => { if (e.key === 'Escape') window.close(); });
+</script>
+</body>
+</html>

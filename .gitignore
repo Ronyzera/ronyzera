@@ -1,0 +1,13 @@
+# dependências e artefatos de build
+node_modules/
+dist/
+apk-assets/
+*.asar
+*.exe
+*.blockmap
+
+# logs e temporários
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
