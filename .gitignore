@@ -6,6 +6,9 @@ apk-assets/
 *.exe
 *.blockmap
 
+# segredos locais (credencial TURN publicada à parte do código)
+turn.json
+
 # logs e temporários
 *.log
 npm-debug.log*

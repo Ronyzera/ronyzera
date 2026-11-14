@@ -2,7 +2,10 @@
 const suites = [
   require('./sintaxe.test.js'),
   require('./seguranca.test.js'),
+  require('./contas.test.js'),
+  require('./turn.test.js'),
   require('./servidores.test.js'),
+  require('./convites.test.js'),
   require('./chat-servidor.test.js'),
   require('./voz.test.js')
 ];

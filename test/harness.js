@@ -57,6 +57,8 @@ async function criarApp(){
       });
       w.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 16);
       w.cancelAnimationFrame = id => clearTimeout(id);
+      // WebCrypto de verdade (PBKDF2 das senhas e ECDSA dos anúncios de servidor)
+      Object.defineProperty(w, 'crypto', { configurable: true, value: require('crypto').webcrypto });
       w.URL.createObjectURL = () => 'blob:teste';
       w.URL.revokeObjectURL = () => {};
     }

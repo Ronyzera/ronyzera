@@ -127,11 +127,12 @@ const testes = [
       const app = await criarApp();
       try{
         await app.run(BASE);
-        const r = await app.run(`(() => {
+        const r = await app.run(`(async () => {
           const enviados = [];
           window.cnPeers = () => ['p1'];
           window.cnSend = (pid, o) => enviados.push(o);
           reordenarSala('rA3', 'rA1');
+          await new Promise(r => setTimeout(r, 150));   // o anúncio é assinado antes de sair
           return {
             ordem: srvGet('svA').rooms.map(x => x.id),
             preset: PRESET_ROOMS.map(x => x.id),

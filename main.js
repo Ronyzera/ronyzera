@@ -1,5 +1,6 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, shell, dialog, globalShortcut, Notification, Tray, Menu } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const turn = require('./turn.js');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -122,6 +123,19 @@ ipcMain.handle('desktop:setSettings', (_e, cfg) => {
   return { hotkeys: applyShortcuts(), settings: desktopCfg, hook: false };
 });
 ipcMain.handle('desktop:captureHook', async () => null);   // sem gancho nativo: o push-to-talk funciona com o app em foco
+
+// ---------- ICE/TURN: a página pede a lista; credencial fica só aqui ----------
+function turnConfigurado(){
+  const bruto = process.env.RONYZERA_TURN;
+  if(bruto){
+    try{ const t = JSON.parse(bruto); if(t && typeof t === 'object') return t; }catch(e){}
+  }
+  return desktopCfg.turn || null;            // null = usa a credencial padrão do app (turn.js)
+}
+ipcMain.handle('desktop:iceServers', () => {
+  try{ return turn.iceServers(turnConfigurado()); }
+  catch(e){ return turn.iceServers(null); }
+});
 ipcMain.on('desktop:notify', (_e, title, body) => {
   if(!desktopCfg.notifications) return;                    // respeita o interruptor "Avisos do Windows"
   try{ if(Notification.isSupported()) new Notification({ title: String(title || 'RONYZERA').slice(0, 64), body: String(body || '').slice(0, 200) }).show(); }catch(e){}

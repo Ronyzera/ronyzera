@@ -26,5 +26,8 @@ contextBridge.exposeInMainWorld('desktop', {
   // Backup automático no disco (%appdata%/RONYZERA/backups) — sobrevive a limpar o cache do app
   backupSave: (json) => ipcRenderer.invoke('desktop:backupSave', String(json || '')),
   backupList: () => ipcRenderer.invoke('desktop:backupList'),
-  backupRead: (nome) => ipcRenderer.invoke('desktop:backupRead', String(nome || ''))
+  backupRead: (nome) => ipcRenderer.invoke('desktop:backupRead', String(nome || '')),
+
+  // Lista de STUN/TURN para voz e tela (credencial temporária montada no processo principal)
+  iceServers: () => ipcRenderer.invoke('desktop:iceServers')
 });

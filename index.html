@@ -511,6 +511,7 @@ body .wrap{position:relative;z-index:1}
 #joinCard #joinBtn{width:100%;height:46px;margin-top:18px;font-size:1.05rem;border-radius:5px;justify-content:center}
 #joinCard #rememberRow{margin-top:2px}
 #joinCard #accountHint{text-align:center;margin-top:14px;font-size:.85rem;opacity:.9;color:var(--muted)}
+#joinCard .authNote{margin:-4px 0 10px;color:var(--muted);font-size:.76rem;line-height:1.35}
 @media (max-width:520px){#joinCard{padding:24px 18px}}
 
 #sidebar{background:rgba(19,10,36,.4);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}   /* bloco das salas mais transparente */
@@ -1169,6 +1170,7 @@ font-weight:600;font-size:.72rem;color:var(--muted)}
     </div>
     <div class="field"><label class="fl">Seu nome</label><input type="text" id="nickname" maxlength="24" autocomplete="off"></div>
     <div class="field"><label class="fl" id="passwordLabel">Criar senha</label><input type="password" id="password" maxlength="40" autocomplete="off"></div>
+    <div class="authNote">🔒 A senha fica só neste computador (proteção local, não é uma conta online).</div>
     <div id="profileMsg" class="hidden" style="margin-top:-6px;margin-bottom:10px;color:var(--magenta);font-size:.85rem"></div>
     <label id="rememberRow" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.9rem;text-transform:none;letter-spacing:0;color:var(--text)">
       <input type="checkbox" id="rememberLogin" style="width:auto;height:auto;margin:0;accent-color:var(--magenta)"> Salvar login
@@ -1509,23 +1511,26 @@ function showLobby(){
   cnStart();
 }
 $('joinBtn').onclick = async () => {
+  if($('joinBtn').dataset.busy === '1') return;
   myName = $('nickname').value.trim() || 'Convidado';
   myAccountName = myName;   // nome real da conta (não muda nem se um admin te der um apelido de sala depois)
   const pwd = $('password').value;
   const msgEl = $('profileMsg');
   msgEl.classList.add('hidden'); msgEl.textContent = '';
   const existing = loadProfile(myName);
-  if(existing){
-    if((existing.password || '') !== pwd){
-      msgEl.textContent = 'Esse nome já tem uma conta aqui — senha incorreta.';
-      msgEl.classList.remove('hidden');
-      return;
-    }
-    if(!myPhoto && existing.photo) myPhoto = existing.photo;
-    saveProfile(myName, pwd, myPhoto);
-  } else {
-    saveProfile(myName, pwd, myPhoto);
+  const lembrado = !!existing && (isRemembered(myName) || isSessionLogin(myName));
+  $('joinBtn').dataset.busy = '1';
+  let r;
+  try{ r = await entrarConta(myName, pwd, { pularSenha: lembrado && !pwd }); }
+  finally { $('joinBtn').dataset.busy = ''; }
+  if(!r.ok){
+    msgEl.textContent = r.erro === 'vazia'
+      ? 'Escolha uma senha para criar sua conta (ela fica só neste computador).'
+      : 'Esse nome já tem uma conta aqui — senha incorreta.';
+    msgEl.classList.remove('hidden');
+    return;
   }
+  $('password').value = '';                                 // não deixa a senha digitada no campo
   saveName(myName);
   setRemember($('rememberLogin').checked);
   setSession(myName);
@@ -1610,29 +1615,124 @@ function roomsNorm(rooms){
   });
   if(mudou){ try{ localStorage.setItem('ntg_servers', JSON.stringify(SRV.list)); }catch(e){} }
 })();
+// ===== Assinatura dos anúncios de servidor (ECDSA P-256) =====
+// Cada instalação tem uma chave. Todo anúncio leva a chave pública e a assinatura do
+// conteúdo, então ninguém consegue renomear/apagar salas de um servidor que não é seu.
+const svSeen = new Set();                 // anúncios já repassados (evita loop entre peers)
+let svKeyCache = null;                    // chave privada desta instalação (em memória)
+let svConvite = '';                       // servidor pedido por link ?srv=
+let svConviteFeito = false, svConviteT = null;
+function svTemCripto(){ try{ return !!(window.crypto && crypto.subtle); }catch(e){ return false; } }
+function svB64(buf){ return b64Bytes(buf); }
+function svUnb64(txt){ return bytesB64(txt); }
+function svPubLimpa(pub){
+  return (pub && pub.x && pub.y) ? { kty:'EC', crv:'P-256', x:String(pub.x), y:String(pub.y) } : null;
+}
+async function svFp(pub){
+  const p = svPubLimpa(pub); if(!p) return '';
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(p)));
+  return svB64(buf).slice(0, 22);
+}
+async function svMinhaChave(){
+  if(svKeyCache) return svKeyCache;
+  let par = null;
+  try{ par = JSON.parse(localStorage.getItem('ntg_keypair') || 'null'); }catch(e){}
+  if(!par || !par.priv || !par.pub){
+    const kp = await crypto.subtle.generateKey({ name:'ECDSA', namedCurve:'P-256' }, true, ['sign', 'verify']);
+    par = {
+      priv: await crypto.subtle.exportKey('jwk', kp.privateKey),
+      pub: await crypto.subtle.exportKey('jwk', kp.publicKey)
+    };
+    try{ localStorage.setItem('ntg_keypair', JSON.stringify(par)); }catch(e){}
+  }
+  const key = await crypto.subtle.importKey('jwk', par.priv, { name:'ECDSA', namedCurve:'P-256' }, false, ['sign']);
+  svKeyCache = { key, pub: svPubLimpa(par.pub), fp: await svFp(par.pub) };
+  return svKeyCache;
+}
+// Texto exato que é assinado: qualquer mudança em nome/salas/foto quebra a assinatura
+function svCanonicoServer(s){
+  return JSON.stringify({
+    id:String(s.id || ''), name:String(s.name || ''), owner:String(s.owner || ''),
+    v:+s.v || 0, img:String(s.img || ''), ownerKey:String(s.ownerKey || ''),
+    ownerPub: svPubLimpa(s.ownerPub), rooms: roomsNorm(s.rooms)
+  });
+}
+async function svAssinar(s){
+  if(!svTemCripto()) return s;
+  try{
+    const k = await svMinhaChave();
+    s.ownerKey = k.fp; s.ownerPub = k.pub;
+    const buf = await crypto.subtle.sign({ name:'ECDSA', hash:'SHA-256' }, k.key, new TextEncoder().encode(svCanonicoServer(s)));
+    s.sig = svB64(buf);
+  }catch(e){}
+  return s;
+}
+async function svVerificarServer(s){
+  if(!svTemCripto() || !s || !s.sig || !s.ownerPub) return false;
+  try{
+    const fp = await svFp(s.ownerPub);
+    if(!fp || fp !== String(s.ownerKey || '')) return false;
+    const key = await crypto.subtle.importKey('jwk', svPubLimpa(s.ownerPub), { name:'ECDSA', namedCurve:'P-256' }, false, ['verify']);
+    return await crypto.subtle.verify({ name:'ECDSA', hash:'SHA-256' }, key, svUnb64(s.sig), new TextEncoder().encode(svCanonicoServer(s)));
+  }catch(e){ return false; }
+}
+async function svVerificarDel(d){
+  if(!svTemCripto() || !d || !d.sig || !d.ownerPub) return false;
+  try{
+    const fp = await svFp(d.ownerPub);
+    if(!fp || fp !== String(d.ownerKey || '')) return false;
+    const key = await crypto.subtle.importKey('jwk', svPubLimpa(d.ownerPub), { name:'ECDSA', namedCurve:'P-256' }, false, ['verify']);
+    const texto = JSON.stringify({ t:'sv-del', id:String(d.id || '') });
+    return await crypto.subtle.verify({ name:'ECDSA', hash:'SHA-256' }, key, svUnb64(d.sig), new TextEncoder().encode(texto));
+  }catch(e){ return false; }
+}
+// Junta os campos que viajam nos anúncios (mantém a assinatura junto)
+function svNormServer(s){
+  return {
+    id:String(s.id).slice(0, 20),
+    name:String(s.name || 'Servidor').slice(0, 32),
+    owner:String(s.owner || '').slice(0, 24),
+    v:+s.v || 0,
+    img:String(s.img || '').slice(0, 1500000),
+    rooms:roomsNorm(s.rooms),
+    ownerKey:String(s.ownerKey || '').slice(0, 64),
+    ownerPub: svPubLimpa(s.ownerPub),
+    sig:String(s.sig || '').slice(0, 200)
+  };
+}
 function svsMerge(list, fromName){           // minha cópia dos servidores públicos (cada um anuncia os seus)
   let ch = false, mudouCur = false;
   (Array.isArray(list) ? list : []).forEach(s => {
     if(!s || !s.id || String(s.id).length > 20) return;
+    if(s.id === 'ntg') return;               // o padrão já existe localmente; nunca "recria" por fora
     const cur = srvGet(s.id);
     const f = String(fromName || '').toLowerCase();
-    const adminManda = f === 'rony';         // RONY (admin do app) pode mexer em qualquer servidor, até o padrão
+    const adminManda = f === 'rony';         // RONY (admin do app) pode mexer em servidor ainda sem assinatura
     const donoManda = adminManda || f === String(s.owner || '').toLowerCase();
-    if(!donoManda) return;                   // só o dono do servidor muda o próprio
-    const norm = () => ({ id:String(s.id), name:String(s.name || 'Servidor').slice(0, 32), owner:String(s.owner || '').slice(0, 24), v:+s.v || 0, img:String(s.img || '').slice(0, 1500000), rooms:roomsNorm(s.rooms) });
+    const assinado = !!(s.sig && s.ownerKey && s.ownerPub && s.ownerPub.x);
+    if(!donoManda) return;                   // só o dono anuncia/cria o próprio servidor
+    const norm = () => svNormServer(s);
     if(cur){
-      if(f !== String(cur.owner || '').toLowerCase() && !adminManda) return;
+      if(cur.ownerKey){
+        // servidor já tem dono assinado: só a MESMA chave pode mudar (nem o admin, nem outro nome)
+        if(!assinado || String(s.ownerKey) !== String(cur.ownerKey)) return;
+        if(String(s.owner || '').toLowerCase() !== String(cur.owner || '').toLowerCase()) return;
+      } else if(assinado){
+        // primeira assinatura vista: fixa a chave do dono (transição do formato antigo)
+        if(f !== String(cur.owner || '').toLowerCase() && !adminManda) return;
+      } else if(f !== String(cur.owner || '').toLowerCase() && !adminManda){
+        return;                              // anúncio antigo sem assinatura
+      }
       if((+s.v || 0) <= (+cur.v || 0)) return;
       SRV.list = SRV.list.map(x => x.id === s.id ? norm() : x);
       ch = true; if(s.id === SRV.cur) mudouCur = true;
     } else {
-      const ehPadrao = s.id === 'ntg'; if(ehPadrao) return;   // o padrão já existe localmente; nunca "recria" por fora
       SRV.list.push(norm());
       botToast('🌐 Novo servidor disponível: ' + String(s.name || 'Servidor'));
       ch = true;
     }
   });
-  if(!ch) return;
+  if(!ch) return false;
   srvsSave();
   railRender();
   if(mudouCur){                              // o dono atualizou o servidor que você está olhando (imagem/nome/salas)
@@ -1640,12 +1740,157 @@ function svsMerge(list, fromName){           // minha cópia dos servidores púb
     PRESET_ROOMS = presetRoomsPreservando(svRooms(SRV.cur));
     renderPresetRooms();
   }
+  return true;
 }
-function svsTo(conn){                        // anuncia meus servidores quando conecto a alguém do chat-geral
+// Assina (quando é seu) e transmite o anúncio para a rede do chat-geral
+async function svsAnunciar(servidores, conn){
   try{
     const eu = String(myAccountName || myName).toLowerCase();
-    const mine = SRV.list.filter(s => eu === 'rony' || String(s.owner || '').toLowerCase() === eu);   // dono dono de cada um; rony (admin) anuncia até o padrão
-    if(mine.length && conn) conn.send({ type:'sv-dir', list:mine, from:myName });
+    const out = [];
+    for(const s of (Array.isArray(servidores) ? servidores : [])){
+      if(!s || !s.id || s.id === 'ntg') continue;
+      const meu = String(s.owner || '').toLowerCase() === eu;
+      if(meu && svTemCripto()){
+        // assina; se a chave da instalação mudou (backup restaurado em outro PC), assina de novo
+        const k = await svMinhaChave();
+        if(!(s.sig && s.ownerKey === k.fp)) await svAssinar(s);
+        if(s.sig) out.push(s);
+      } else if(s.sig && s.ownerPub){
+        out.push(s);                                     // servidor de outro dono: só repassa assinado
+      } else if(meu){
+        out.push(s);                                     // sem WebCrypto: segue no formato antigo
+      }
+    }
+    if(!out.length) return;
+    srvsSave();
+    const de = String(myAccountName || myName);           // nome real da conta (apelido de sala não conta)
+    if(conn){ try{ conn.send({ type:'sv-dir', list:out, from:de }); }catch(e){} }
+    else svsBroadcast({ type:'sv-dir', list:out, from:de });
+  }catch(e){}
+}
+async function svsTo(conn){                  // anuncia meus servidores quando conecto a alguém do chat-geral
+  const eu = String(myAccountName || myName).toLowerCase();
+  const meus = SRV.list.filter(s => s.id !== 'ntg' && (eu === 'rony' || String(s.owner || '').toLowerCase() === eu || (s.sig && s.ownerPub)));
+  await svsAnunciar(meus, conn);
+}
+// Recebe anúncio: verifica a assinatura, aplica e repassa (quem tem o servidor ajuda quem não tem)
+async function svsOnDir(d, fromPeer){
+  try{
+    if(!d || !Array.isArray(d.list)) return false;
+    const verdes = [];
+    for(const bruto of d.list.slice(0, 40)){
+      if(!bruto || !bruto.id || String(bruto.id).length > 20) continue;
+      if(bruto.sig && bruto.ownerPub){
+        // assinatura inválida = anúncio falsificado: descarta (não vira anúncio antigo sem assinatura)
+        if(await svVerificarServer(bruto)) verdes.push(bruto);
+      } else verdes.push(bruto);
+    }
+    const mudou = svsMerge(verdes, d.from);
+    const assinados = verdes.filter(s => s.sig && s.ownerPub);
+    if(assinados.length){
+      const marca = assinados.map(s => s.id + '@' + (+s.v || 0) + ':' + String(s.sig).slice(0, 12)).join('|');
+      if(marca && !svSeen.has(marca)){
+        svSeen.add(marca);
+        if(svSeen.size > 300) svSeen.delete(svSeen.values().next().value);
+        try{ cnPeers().forEach(p => { if(p !== fromPeer) cnSend(p, { type:'sv-dir', list:assinados, from:d.from }); }); }catch(e){}
+      }
+    }
+    svConviteConferir();
+    return mudou;
+  }catch(e){ return false; }
+}
+// Convite ?srv=<id>: pergunta a quem estiver online e entra no servidor quando chegar
+function svIdLimpo(v){ return String(v || '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 20); }
+function svsConviteLink(){
+  if(!svConvite) return;
+  const id = svConvite;
+  try{
+    const u = new URL(location.href);
+    if(u.searchParams.get('srv') === id){ u.searchParams.delete('srv'); history.replaceState(null, '', u.toString()); }
+  }catch(e){}
+  if(srvGet(id)){
+    // já tinha esse servidor: só abre (não precisa pedir para ninguém)
+    svConvite = ''; svConviteFeito = true;
+    botToast('🌐 Abrindo o servidor do convite.');
+    try{ switchServer(id); }catch(e){}
+  }
+}
+function svsPedir(id){
+  if(!id) return;
+  try{ cnPeers().forEach(p => cnSend(p, { type:'sv-want', id:String(id).slice(0, 20), hop:0 })); }catch(e){}
+}
+async function svsOnWant(d, fromPeer){
+  try{
+    if(!d || !d.id) return;
+    const id = String(d.id).slice(0, 20);
+    const s = srvGet(id);
+    if(s && s.id !== 'ntg'){
+      if(!(s.sig && s.ownerPub)){
+        const eu = String(myAccountName || myName).toLowerCase();
+        if(String(s.owner || '').toLowerCase() === eu) await svAssinar(s);   // só o dono assina o próprio servidor
+      }
+      if(s.sig && s.ownerPub){ try{ cnSend(fromPeer, { type:'sv-dir', list:[s], from:String(myAccountName || myName) }); }catch(e){} }
+      return;
+    }
+    const hop = (+d.hop || 0) + 1;
+    if(hop > 2) return;
+    try{ cnPeers().forEach(p => { if(p !== fromPeer) cnSend(p, { type:'sv-want', id, hop }); }); }catch(e){}
+  }catch(e){}
+}
+function svConviteConferir(){
+  if(!svConvite || svConviteFeito || !srvGet(svConvite)) return;
+  const id = svConvite;
+  svConviteFeito = true; svConvite = '';
+  if(svConviteT){ clearInterval(svConviteT); svConviteT = null; }
+  botToast('🌐 Servidor do convite adicionado.');
+  try{ if(id !== SRV.cur) switchServer(id); }catch(e){}
+}
+function svsConviteIniciar(){
+  if(!svConvite) return;
+  if(srvGet(svConvite)){ svConviteConferir(); return; }
+  botToast('🔎 Procurando o servidor do convite…');
+  svsPedir(svConvite);
+  if(svConviteT) clearInterval(svConviteT);
+  let n = 0;
+  svConviteT = setInterval(() => {
+    if(!svConvite || srvGet(svConvite) || ++n > 10){
+      clearInterval(svConviteT); svConviteT = null;
+      if(svConvite && !srvGet(svConvite)) botToast('⚠️ Não achei o servidor do convite — peça para alguém que tem ele ficar online.');
+      return;
+    }
+    svsPedir(svConvite);
+  }, 3000);
+}
+// Exclusão assinada: só o dono (ou quem ainda não fixou chave, no formato antigo) apaga
+async function svsAnunciarDel(s){
+  if(!s) return;
+  try{
+    if(svTemCripto() && s.ownerKey && s.ownerPub && s.sig){
+      const k = await svMinhaChave();
+      if(k.fp === s.ownerKey){
+        const texto = JSON.stringify({ t:'sv-del', id:String(s.id) });
+        const sig = await crypto.subtle.sign({ name:'ECDSA', hash:'SHA-256' }, k.key, new TextEncoder().encode(texto));
+        svsBroadcast({ type:'sv-del', id:String(s.id), ownerKey:k.fp, ownerPub:k.pub, sig:svB64(sig), from:String(myAccountName || myName) });
+        return;
+      }
+    }
+    svsBroadcast({ type:'sv-del', id:String(s.id), from:String(myAccountName || myName) });
+  }catch(e){}
+}
+async function svsOnDel(d, fromPeer){
+  try{
+    if(!d || !d.id) return;
+    const s = srvGet(d.id);
+    if(!s || s.id === 'ntg') return;
+    const f = String(d.from || '').toLowerCase();
+    let pode = false;
+    if(s.ownerKey){
+      if(d.sig && d.ownerPub && String(d.ownerKey) === String(s.ownerKey)) pode = await svVerificarDel(d);
+    } else if(f === String(s.owner || '').toLowerCase() || f === 'rony') pode = true;
+    if(!pode) return;
+    SRV.list = SRV.list.filter(x => x.id !== d.id);
+    srvsSave(); railRender();
+    if(SRV.cur === d.id){ switchServer('ntg'); botToast('🗑 Este servidor foi excluído pelo fundador — voltamos ao RONYZERA.'); }
   }catch(e){}
 }
 const railEl = $('srvRail');
@@ -1797,6 +2042,7 @@ function srvMenuEl(){
     else if(act === 'img') svPickImage(id);
     else if(act === 'room') svRoomAdd(id);
     else if(act === 'del') svDel(id);
+    else if(act === 'convite-srv') copiarConviteServidor(id);
     else if(act === 'esq') moverServidorRel(id, -1);
     else if(act === 'dir') moverServidorRel(id, 1);
   });
@@ -1832,6 +2078,7 @@ function srvMenuOpen(id, x, y){
     (id !== SRV.cur ? '<button type="button" data-smact="open">🔊 Abrir este servidor</button>' : '') +
     (own ? '<button type="button" data-smact="img">🖼 Trocar foto do servidor</button>' +
            '<button type="button" data-smact="room">＋ Criar sala de voz</button>' : '') +
+    (id !== 'ntg' ? '<button type="button" data-smact="convite-srv">🔗 Copiar convite do servidor</button>' : '') +
     (pos > 0 ? '<button type="button" data-smact="esq">◀ Mover para a esquerda</button>' : '') +
     (pos >= 0 && pos < SRV.list.length - 1 ? '<button type="button" data-smact="dir">▶ Mover para a direita</button>' : '') +
     (own && id !== 'ntg' ? '<button type="button" class="danger" data-smact="del">🗑 Excluir servidor</button>' : '');
@@ -1869,6 +2116,24 @@ function copiarConviteSala(rid){
     navigator.clipboard.writeText(txt).then(() => botToast('🔗 Link da sala copiado.'), fallback);
   } else fallback();
 }
+// Convite de servidor: quem abrir o link pede o servidor a quem estiver online (não precisa
+// estar no mesmo chat-geral naquele instante — quem tiver ele repassa para os vizinhos).
+function copiarConviteServidor(id){
+  const u = new URL(location.href); u.search = ''; u.hash = '';
+  u.searchParams.set('srv', id);
+  const txt = u.toString();
+  const fallback = () => {
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      botToast('🔗 Convite do servidor copiado.');
+    }catch(e){ botToast('🔗 Convite do servidor: ' + txt); }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(() => botToast('🔗 Convite do servidor copiado — quem tem ele online entrega para quem abrir o link.'), fallback);
+  } else fallback();
+}
 // ----- ordem das salas: arraste (PC) ou menu (celular) -----
 // O fundador reordena para todo o servidor; quem não é fundador guarda a ordem só no seu app.
 function ordemLocalSalas(id){
@@ -1883,7 +2148,7 @@ function salvarOrdemSalas(nova){
   if(mySvFounder(SRV.cur)){
     s.rooms = nova; s.v = Date.now();
     srvsSave();
-    svsBroadcast({ type:'sv-dir', list:[s], from:myName });
+    svsAnunciar([s]);                                  // assina e avisa a rede
   } else {
     salvarOrdemLocalSalas(s.id, nova.map(r => r.id));
   }
@@ -2005,7 +2270,7 @@ async function svCreate(){
   srvsSave();
   switchServer(id);
   botToast('🌐 Servidor "' + novo.name + '" criado com ' + rooms.length + ' sala(s) — clique com o botão direito no ícone dele para criar mais.');
-  svsBroadcast({ type:'sv-dir', list:[novo], from:myName });
+  await svsAnunciar([novo]);
   railRender(); srvHeadRender();
 }
 // Cabeçalho do servidor: só foto + nome. As ações ficam no botão direito (ícone ou nome).
@@ -2096,7 +2361,7 @@ $('svImgFile').onchange = async () => {
   const kb = Math.round(dados.length * 0.75 / 1024);
   const de = f.size > 250 * 1024 ? ' — comprimida de ' + Math.round(f.size / 1024) + ' KB' : '';
   srvsSave(); railRender(); srvHeadRender();
-  svsBroadcast({ type:'sv-dir', list:[s], from:myName });
+  svsAnunciar([s]);
   botToast('✅ Foto do servidor atualizada (' + kb + ' KB' + de + '). Chega pros outros em instantes.');
 };
 async function svRoomAdd(svId){
@@ -2113,7 +2378,7 @@ async function svRoomAdd(svId){
   s.rooms.push({ id:svRoomSlug(s.id, nome), name:nome, icon:'🎮' });
   s.v = Date.now();
   srvsSave();
-  svsBroadcast({ type:'sv-dir', list:[s], from:myName });
+  svsAnunciar([s]);
   if(id === SRV.cur){ PRESET_ROOMS = s.rooms; renderPresetRooms(); }
   srvHeadRender();
   botToast('🎮 Sala "' + nome + '" criada em "' + (s.name || 'Servidor') + '".');
@@ -2130,7 +2395,7 @@ async function svRoomRename(rid, svId){
   if(svRoomNomeExiste(s.rooms, novo, rid)){ botToast('⚠️ Já existe uma sala "' + novo + '" aqui.'); return; }
   r.name = novo; s.v = Date.now();
   srvsSave();
-  svsBroadcast({ type:'sv-dir', list:[s], from:myName });
+  svsAnunciar([s]);
   if(id === SRV.cur){ PRESET_ROOMS = s.rooms; renderPresetRooms(); }
   srvHeadRender();
   botToast('✏️ Sala renomeada para "' + novo + '".');
@@ -2145,7 +2410,7 @@ async function svDel(svId){
   SRV.list = SRV.list.filter(x => x.id !== s.id);
   srvsSave();
   if(SRV.cur === s.id) switchServer('ntg'); else { railRender(); srvHeadRender(); }
-  svsBroadcast({ type:'sv-del', id:s.id, from:myName });
+  svsAnunciarDel(s);
   botToast('🗑 Servidor "' + s.name + '" excluído — some da lista de todo mundo em instantes.');
 }
 async function svRoomDel(rid){
@@ -2157,7 +2422,7 @@ async function svRoomDel(rid){
   s.rooms = s.rooms.filter(x => x.id !== rid);
   s.v = Date.now(); srvsSave();
   PRESET_ROOMS = svRooms(s.id); renderPresetRooms();
-  svsBroadcast({ type:'sv-dir', list:[s], from:myName });
+  svsAnunciar([s]);
   botToast('🗑 Sala "' + r.name + '" excluída deste servidor.');
 }
 // Começa já com as salas do servidor salvo: o switchServer abaixo não roda quando SRV.cur já é ele,
@@ -2173,26 +2438,94 @@ function loadSavedName(){ try{ return localStorage.getItem('ntg_name') || ''; }c
 function saveName(n){ try{ localStorage.setItem('ntg_name', n); }catch(e){} }
 
 // ----- Perfil local (nome+senha+foto, só neste navegador — não é autenticação de verdade) -----
+// A senha NUNCA fica em texto puro: guardamos só o hash PBKDF2 (sal + iterações) no localStorage.
 function profileKey(name){ return 'ntg_profile_' + (name || '').trim().toLowerCase(); }
 function loadProfile(name){
   try{ const raw = localStorage.getItem(profileKey(name)); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
 }
-function saveProfile(name, password, photo){
-  try{ localStorage.setItem(profileKey(name), JSON.stringify({ password: password || '', photo: photo || null })); }catch(e){}
+const PBKDF2_ITER = 150000;
+function b64Bytes(buf){
+  const b = new Uint8Array(buf); let s = '';
+  for(let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s);
+}
+function bytesB64(txt){
+  const s = atob(String(txt || '')); const b = new Uint8Array(s.length);
+  for(let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return b;
+}
+async function senhaHash(senha, saltB64, iter){
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(senha || '')), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:bytesB64(saltB64), iterations:+iter || PBKDF2_ITER, hash:'SHA-256' }, base, 256);
+  return b64Bytes(bits);
+}
+async function senhaCriar(senha){
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  const saltB64 = b64Bytes(salt);
+  return { v:1, algo:'PBKDF2-SHA256', iter:PBKDF2_ITER, salt:saltB64, hash:await senhaHash(senha, saltB64, PBKDF2_ITER) };
+}
+async function senhaConfereHash(senha, pw){
+  try{
+    if(!pw || !pw.hash || !pw.salt) return false;
+    return (await senhaHash(senha, pw.salt, pw.iter)) === pw.hash;
+  }catch(e){ return false; }
+}
+async function saveProfile(name, password, photo, nm){
+  const chave = profileKey(name);
+  let prof = null;
+  try{ prof = JSON.parse(localStorage.getItem(chave) || 'null'); }catch(e){}
+  prof = prof || {};
+  const out = {
+    photo: photo !== undefined ? (photo || null) : (prof.photo || null),
+    nm: nm !== undefined ? (nm || null) : (prof.nm || null)
+  };
+  if(password){
+    try{ out.pw = await senhaCriar(password); }
+    catch(e){ out.password = String(password); }        // ambiente sem WebCrypto: mantém o comportamento antigo
+  } else if(prof.pw){ out.pw = prof.pw; }
+  else if(typeof prof.password === 'string' && prof.password){ out.password = prof.password; }
+  try{ localStorage.setItem(chave, JSON.stringify(out)); }catch(e){}
+  return out;
+}
+// Atualiza campos do perfil preservando a senha (hash) e o estilo do nome
+function gravarPerfil(name, patch){
+  try{
+    const prof = loadProfile(name) || {};
+    const out = Object.assign({}, prof, patch);
+    if(out.pw) delete out.password;                    // já migrado: não guarda mais texto puro
+    localStorage.setItem(profileKey(name), JSON.stringify(out));
+  }catch(e){}
 }
 // Atualiza só a foto salva, preservando a senha e o estilo do nome já existentes (usado ao trocar a foto de dentro da sala)
-function updateSavedPhoto(name, photo){
-  try{
-    const prof = loadProfile(name) || { password: '' };
-    localStorage.setItem(profileKey(name), JSON.stringify({ password: prof.password || '', photo: photo || null, nm: prof.nm || null }));
-  }catch(e){}
-}
+function updateSavedPhoto(name, photo){ gravarPerfil(name, { photo: photo || null }); }
 // Atualiza só o estilo do nome salvo, preservando a senha e a foto já existentes
-function updateSavedNm(name, nm){
-  try{
-    const prof = loadProfile(name) || { password: '' };
-    localStorage.setItem(profileKey(name), JSON.stringify({ password: prof.password || '', photo: prof.photo || null, nm: nm || null }));
-  }catch(e){}
+function updateSavedNm(name, nm){ gravarPerfil(name, { nm: nm || null }); }
+// Confere a senha do perfil (suporta o formato antigo em texto puro e migra no login)
+async function senhaConfere(prof, senha){
+  if(!prof) return 'novo';
+  if(prof.pw && prof.pw.hash) return (await senhaConfereHash(senha, prof.pw)) ? 'ok' : 'errada';
+  if(typeof prof.password === 'string' && prof.password) return prof.password === senha ? 'legado' : 'errada';
+  return 'sem-senha';
+}
+// Entra/cria a conta local. pularSenha só vale para login já salvo neste computador.
+async function entrarConta(nome, senha, opts){
+  opts = opts || {};
+  const perfil = loadProfile(nome);
+  if(perfil){
+    const st = await senhaConfere(perfil, senha);
+    if(st === 'errada'){
+      // login já salvo neste computador: o campo vem vazio de propósito e entra direto
+      if(opts.pularSenha && !String(senha || '')) return { ok:true };
+      return { ok:false, erro:'senha' };
+    }
+    if(st === 'legado') await saveProfile(nome, senha, myPhoto || perfil.photo, perfil.nm);   // migra para hash
+    if(!myPhoto && perfil.photo) myPhoto = perfil.photo;
+    return { ok:true };
+  }
+  if(!String(senha || '').trim() && !opts.pularSenha) return { ok:false, erro:'vazia' };
+  await saveProfile(nome, senha, myPhoto);
+  return { ok:true };
 }
 function setSession(name){ try{ sessionStorage.setItem('ntg_session', (name || '').trim().toLowerCase()); }catch(e){} }
 function isSessionLogin(name){ try{ const n = (name || '').trim().toLowerCase(); return !!n && sessionStorage.getItem('ntg_session') === n; }catch(e){ return false; } }
@@ -2202,8 +2535,8 @@ function setRemember(on){ try{ if(on) localStorage.setItem('ntg_remember', myNam
 function updateAuthUI(){
   const name = $('nickname').value.trim();
   const prof = name ? loadProfile(name) : null;
-  const has = !!(prof && prof.password);
-  const lbl = $('passwordLabel'), pw = $('password'), hint = $('accountHint');
+  const has = !!(prof && (prof.pw || prof.password));
+  const lbl = $('passwordLabel'), hint = $('accountHint');
   const title = $('authTitle'), sub = $('authSub'), btn = $('joinBtn');
   if(prof){
     lbl.textContent = 'Senha';
@@ -2212,7 +2545,10 @@ function updateAuthUI(){
     if(btn && !btn.disabled) btn.textContent = 'Entrar';
     hint.textContent = '⚠️ Essa conta já existe — digite sua senha para entrar.';
     hint.classList.remove('hidden');
-    if(has && isRemembered() && !pw.value){ pw.value = prof.password; $('rememberLogin').checked = true; }
+    if(has && (isRemembered(name) || isSessionLogin(name))){
+      $('rememberLogin').checked = isRemembered(name);
+      hint.textContent = '🔓 Login lembrado neste computador — pode entrar sem digitar a senha.';
+    }
   } else {
     lbl.textContent = 'Criar senha';
     if(name){
@@ -2226,9 +2562,7 @@ function updateAuthUI(){
       if(btn && !btn.disabled) btn.textContent = 'Entrar';
       hint.classList.add('hidden');
     }
-    if(pw.dataset.auto === '1'){ pw.value = ''; }
   }
-  pw.dataset.auto = (prof && has && isRemembered() && pw.value === prof.password) ? '1' : '0';
 }
 let myPhoto = null;   // dataURL pequena (ou null)
 const knownPhotos = new Map();   // id -> dataURL
@@ -2627,20 +2961,41 @@ $('roomCode').addEventListener('keydown', e => { if(e.key === 'Enter' && !$('joi
 renderPresetRooms();
 
 // ============ SERVIDOR TURN (necessário para conectar com amigos em redes diferentes) ============
-// TURN próprio (equipe NTG, Metered) com credencial fixa — mais confiável que o relay público antigo.
+// A credencial NÃO fica no HTML. No app instalado, o processo principal (main.js/turn.js) monta a lista,
+// inclusive usuário/senha temporários do coturn. No navegador/APK o site pode publicar um "turn.json"
+// ao lado do index.html com { urls, username, credential } e ligar a busca com
+// <meta name="ronyzera-turn" content="turn.json"> — sem isso sobram só os STUN.
 let ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-  { urls: 'stun:stun.relay.metered.ca:80' },
-  { urls: 'turn:standard.relay.metered.ca:80', username: '7c19419341d3341b671456e9', credential: 'ZvsUOi39GWKUvBIt' },
-  { urls: 'turn:standard.relay.metered.ca:80?transport=tcp', username: '7c19419341d3341b671456e9', credential: 'ZvsUOi39GWKUvBIt' },
-  { urls: 'turn:standard.relay.metered.ca:443', username: '7c19419341d3341b671456e9', credential: 'ZvsUOi39GWKUvBIt' },
-  { urls: 'turns:standard.relay.metered.ca:443?transport=tcp', username: '7c19419341d3341b671456e9', credential: 'ZvsUOi39GWKUvBIt' },
-  // fallback: endpoint global (só plano pago no Metered, mas deixado aqui por segurança caso a conta tenha acesso)
-  { urls: 'turn:global.relay.metered.ca:80', username: '7c19419341d3341b671456e9', credential: 'ZvsUOi39GWKUvBIt' },
-  { urls: 'turn:global.relay.metered.ca:443', username: '7c19419341d3341b671456e9', credential: 'ZvsUOi39GWKUvBIt' }
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478', 'stun:stun.relay.metered.ca:80'] }
 ];
-let iceLoaded = true;   // credencial já é fixa, não precisa buscar nada em tempo de execução
-async function loadIceServers(){}
+let iceLoaded = false;
+async function loadIceServers(){
+  if(iceLoaded) return;
+  iceLoaded = true;
+  try{
+    if(window.desktop && window.desktop.iceServers){
+      const lista = await window.desktop.iceServers();
+      if(Array.isArray(lista) && lista.length){ ICE_SERVERS = lista; return; }
+    }
+  }catch(e){}
+  // navegador/APK: credencial opcional publicada junto do site. Só busca quando o HTML avisa
+  // onde ela está: <meta name="ronyzera-turn" content="turn.json"> (os builds de site/APK
+  // acrescentam essa meta sozinhos quando o arquivo turn.json existe).
+  try{
+    const meta = document.querySelector('meta[name="ronyzera-turn"]');
+    const alvo = meta && String(meta.getAttribute('content') || '').trim();
+    if(alvo){
+      const r = await fetch(alvo, { cache:'no-store' });
+      if(r && r.ok){
+        const cfg = await r.json();
+        const urls = Array.isArray(cfg && cfg.urls) ? cfg.urls.map(String) : (cfg && cfg.urls ? [String(cfg.urls)] : []);
+        if(urls.length && cfg.username && cfg.credential){
+          ICE_SERVERS = ICE_SERVERS.concat([{ urls: urls, username: String(cfg.username), credential: String(cfg.credential) }]);
+        }
+      }
+    }
+  }catch(e){}
+}
 // Diagnóstico da SUA rede: quantos endereços públicos distintos aparecem (NAT restrito/CGNAT), se UDP está bloqueado e se o TURN responde
 function diagnoseNetwork(timeoutMs){
   return new Promise(resolve => {
@@ -3076,7 +3431,7 @@ function settingsModalEl(){
             '<button type="button" class="srvBkBtn" id="srvExportBtn">⬇ Exportar backup (.json)</button>' +
             '<button type="button" class="srvBkBtn" id="srvImportBtn">⬆ Importar backup</button>' +
           '</div>' +
-          '<div class="setAvHint" id="srvBkInfo" style="margin-top:12px">O backup inclui nomes, fotos e salas dos seus servidores, além de tema, atalhos e perfis (o RONYZERA é sempre recriado pelo app).</div>' +
+          '<div class="setAvHint" id="srvBkInfo" style="margin-top:12px">O backup inclui nomes, fotos e salas dos seus servidores, além de tema, atalhos, perfis e a chave que prova que os servidores são seus. Guarde o arquivo em local seguro.</div>' +
           '<input type="file" id="srvImportFile" accept="application/json,.json" class="hidden">' +
           '<h3 style="margin-top:22px">Backup automático</h3>' +
           '<div class="setAvHint" style="margin:-12px 0 10px">Uma cópia por dia fica salva no computador, guardando os últimos 7 dias. Funciona só no app instalado.</div>' +
@@ -3206,7 +3561,7 @@ function svExportar(){
 }
 function svServidorLimpo(s){
   const padrao = new Set(DEFAULT_ROOMS.map(r => r.id));   // backup antigo não devolve as salas padrão para dentro de servidor seu
-  return {
+  const out = {
     id:String(s.id).slice(0, 20),
     name:String(s.name || 'Servidor').slice(0, 32),
     owner:String(s.owner || '').slice(0, 24),
@@ -3214,6 +3569,11 @@ function svServidorLimpo(s){
     img:String(s.img || '').slice(0, 1500000),
     rooms:roomsNorm(s.rooms).filter(r => !padrao.has(r.id))
   };
+  // a assinatura do dono viaja junto: sem isso o servidor restaurado perderia a "identidade"
+  if(s.ownerKey) out.ownerKey = String(s.ownerKey).slice(0, 64);
+  if(s.ownerPub && s.ownerPub.x && s.ownerPub.y) out.ownerPub = { kty:'EC', crv:'P-256', x:String(s.ownerPub.x), y:String(s.ownerPub.y) };
+  if(s.sig) out.sig = String(s.sig).slice(0, 200);
+  return out;
 }
 // Restaura tema, atalhos, ajustes e perfis salvos no backup (vale depois de recarregar o app)
 function svAplicarConfig(d){
@@ -3260,7 +3620,7 @@ function svImportar(e){
     }
     srvsSave(); railRender(); srvHeadRender();
     PRESET_ROOMS = svRooms(SRV.cur); renderPresetRooms();
-    try{ svsBroadcast({ type:'sv-dir', list:SRV.list.filter(s => s.id !== 'ntg'), from:myName }); }catch(err){}
+    try{ svsAnunciar(SRV.list.filter(s => s.id !== 'ntg')); }catch(err){}
     const info = document.getElementById('srvBkInfo');
     if(info) info.textContent = completo
       ? ('Backup completo restaurado: ' + novas + ' servidor(es) e ' + ajustes + ' ajuste(s).')
@@ -3481,10 +3841,12 @@ function keepPeerRegistered(p){
 }
 function createPeer(id){
   return new Promise((resolve, reject) => {
-    const p = new Peer(id, { debug: 0, config: { iceServers: ICE_SERVERS } });
-    const t = setTimeout(() => { p.destroy(); reject(new Error('tempo esgotado')); }, 9000);
-    p.once('open', () => { clearTimeout(t); keepPeerRegistered(p); resolve(p); });
-    p.once('error', (e) => { clearTimeout(t); reject(e); });
+    loadIceServers().then(() => {
+      const p = new Peer(id, { debug: 0, config: { iceServers: ICE_SERVERS } });
+      const t = setTimeout(() => { p.destroy(); reject(new Error('tempo esgotado')); }, 9000);
+      p.once('open', () => { clearTimeout(t); keepPeerRegistered(p); resolve(p); });
+      p.once('error', (e) => { clearTimeout(t); reject(e); });
+    }).catch(reject);
   });
 }
 
@@ -5073,16 +5435,9 @@ function cnAdd(conn, name){
       dxMemRender(); return;
     }
     if(d.type === 'cg-hello'){ if(d.name) { CN.names.set(id, String(d.name).slice(0, 24)); const nsH = normNs(d.ns); if(nsH){ nmStyles.set(String(d.name).trim().toLowerCase(), nsH); cgPutNm(CN.names.get(id), nsH); } } if(typeof d.photo === 'string' && d.photo.length < 400000) cgPutPhoto(CN.names.get(id), d.photo); renderPresetRooms(); svsTo(conn); return; }
-    if(d.type === 'sv-dir'){ svsMerge(d.list, d.from); return; }
-    if(d.type === 'sv-del'){
-      const s = srvGet(d.id), f = String(d.from || '').toLowerCase();
-      if(s && s.id !== 'ntg' && (f === String(s.owner || '').toLowerCase() || f === 'rony')){   // só o dono (ou o admin do app) pode excluir
-        SRV.list = SRV.list.filter(x => x.id !== d.id);
-        srvsSave(); railRender();
-        if(SRV.cur === d.id){ switchServer('ntg'); botToast('🗑 Este servidor foi excluído pelo fundador — voltamos ao RONYZERA.'); }
-      }
-      return;
-    }
+    if(d.type === 'sv-dir'){ svsOnDir(d, conn.peer); return; }
+    if(d.type === 'sv-want'){ svsOnWant(d, conn.peer); return; }
+    if(d.type === 'sv-del'){ svsOnDel(d, conn.peer); return; }
     try{ chatIncoming(id, d, 'gen'); }catch(e){}
   });
   const gone = () => { const c = CN.conns.get(id); if(c && c.conn === conn){ CN.conns.delete(id); CN.names.delete(id); try{ DXS.pc.delete(id); DXS.pg.delete(id); DXS.bioM.delete(id); DXS.baM.delete(id); }catch(e){} chatPeerGone(id); renderPresetRooms(); } };
@@ -5144,6 +5499,7 @@ async function cnStart(){
   CN.peer.on('error', () => {});
   renderPresetRooms();
   await cnHeal();
+  try{ svsConviteIniciar(); }catch(e){}
   CN.healT = setInterval(cnHeal, 12000);
 }
 window.addEventListener('pagehide', () => { try{ if(CN.peer) CN.peer.destroy(); if(CN.dirPeer) CN.dirPeer.destroy(); }catch(e){} });
@@ -6356,19 +6712,20 @@ window.addEventListener('pagehide', e => { if(!e || !e.persisted) leaveRoom(); }
     myNm = normNs(prof && prof.nm);
     updateAuthUI();
   }
-  const r = sanitize(new URLSearchParams(location.search).get('sala') || '');
+  const params = new URLSearchParams(location.search);
+  const r = sanitize(params.get('sala') || '');
   if(r) $('roomCode').value = r;
+  const convite = svIdLimpo(params.get('srv') || '');
+  if(convite){ svConvite = convite; svsConviteLink(); }
   const savedProf = saved && loadProfile(saved);
-  const noPwd = !(savedProf && savedProf.password);
-  if(saved && isSessionLogin(saved) && savedProf && savedProf.password && !$('password').value) $('password').value = savedProf.password;
+  const noPwd = !(savedProf && (savedProf.pw || savedProf.password));
   const remembered = !!saved && (isRemembered(saved) || isSessionLogin(saved));
-  const credsOk = noPwd || (remembered && !!$('password').value);
+  const credsOk = noPwd || remembered;
   if(saved && credsOk && (r || remembered)) setTimeout(() => $('joinBtn').click(), 80);
   else if(r && saved && !noPwd) $('password').focus();
   else if(r || !saved) $('nickname').focus();
 })();
 $('nickname').addEventListener('input', () => {
-  $('password').value = ($('password').dataset.auto === '1') ? '' : $('password').value;
   $('rememberLogin').checked = false;
   updateAuthUI();
   const prof = loadProfile($('nickname').value);
