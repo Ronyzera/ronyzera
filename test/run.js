@@ -1,6 +1,7 @@
 // Executa todas as suítes (npm test). Sem dependências além do jsdom.
 const suites = [
   require('./sintaxe.test.js'),
+  require('./seguranca.test.js'),
   require('./servidores.test.js'),
   require('./chat-servidor.test.js'),
   require('./voz.test.js')

@@ -21,5 +21,10 @@ contextBridge.exposeInMainWorld('desktop', {
 
   // Atalho global disparado (mutar / ensurdecer) e eventos de push-to-talk externo
   onAction: (cb) => { try{ ipcRenderer.on('desktop:action', (_e, a) => { try{ cb(a); }catch(x){} }); }catch(e){} },
-  onPtt: (cb) => { try{ ipcRenderer.on('desktop:ptt', (_e, d) => { try{ cb(d); }catch(x){} }); }catch(e){} }
+  onPtt: (cb) => { try{ ipcRenderer.on('desktop:ptt', (_e, d) => { try{ cb(d); }catch(x){} }); }catch(e){} },
+
+  // Backup automático no disco (%appdata%/RONYZERA/backups) — sobrevive a limpar o cache do app
+  backupSave: (json) => ipcRenderer.invoke('desktop:backupSave', String(json || '')),
+  backupList: () => ipcRenderer.invoke('desktop:backupList'),
+  backupRead: (nome) => ipcRenderer.invoke('desktop:backupRead', String(nome || ''))
 });

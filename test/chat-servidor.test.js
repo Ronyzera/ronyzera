@@ -84,13 +84,15 @@ const testes = [
           const estado1 = { icone: icone ? icone.textContent : null, linha: linha ? linha.textContent : null, hist: (chatHistory.get('srv:svA') || []).length };
           setStageView('srv');
           const depois = document.querySelector('.srvIcon[data-sv="svA"] .svBadge');
-          return { estado1, badgeSumiu: !depois, bolhas: document.getElementById('chatLog').children.length };
+          const divisor = document.querySelector('#chatLog .chatNewDiv');
+          return { estado1, badgeSumiu: !depois, bolhas: document.querySelectorAll('#chatLog .cmsg').length, divisor: divisor ? divisor.textContent : null };
         })()`);
         iguais(r.estado1.icone, '1');
         iguais(r.estado1.linha, '1');
         iguais(r.estado1.hist, 1);
         ok(r.badgeSumiu, 'abrir o canal deve limpar o badge');
         iguais(r.bolhas, 1, 'mensagem aparece no canal ao abrir');
+        iguais(r.divisor, 'Novas mensagens', 'divisor de novas mensagens');
         semErros(app);
       } finally { app.fechar(); }
     }
@@ -197,6 +199,48 @@ const testes = [
         })()`);
         iguais(r.badges, 0);
         iguais(r.bolhas, 1);
+        semErros(app);
+      } finally { app.fechar(); }
+    }
+  },
+  {
+    nome: 'busca no chat marca ocorrências e navega com Enter/Esc',
+    async fn(){
+      const app = await criarApp();
+      try{
+        await app.run(BASE);
+        const r = await app.run(`(() => {
+          setStageView('srv');
+          chatPush({ id:'s1', from:'peer-1', name:'Fulano', ts:Date.now(), text:'oi mundo oi' }, 'srv:svA');
+          chatBuscaToggle(true);
+          const inp = document.getElementById('chatSearchInput');
+          inp.value = 'oi';
+          inp.dispatchEvent(new Event('input', { bubbles:true }));
+          const marcas = [...document.querySelectorAll('#chatLog mark.buscaMark')];
+          const primeiro = {
+            total: marcas.length,
+            texto: marcas.map(m => m.textContent),
+            atual: (document.querySelector('mark.buscaAtual') || {}).textContent || null,
+            contagem: document.getElementById('chatSearchCount').textContent,
+            corpo: document.querySelector('#chatLog .ctext').textContent
+          };
+          inp.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', bubbles:true, cancelable:true }));
+          const depoisEnter = document.getElementById('chatSearchCount').textContent;
+          inp.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true, cancelable:true }));
+          return {
+            primeiro, depoisEnter,
+            fechou: document.getElementById('chatSearch').classList.contains('hidden'),
+            marcasRestantes: document.querySelectorAll('#chatLog mark.buscaMark').length
+          };
+        })()`);
+        iguais(r.primeiro.total, 2, 'duas ocorrências marcadas');
+        iguais(r.primeiro.texto, ['oi', 'oi']);
+        iguais(r.primeiro.atual, 'oi');
+        iguais(r.primeiro.contagem, '1/2');
+        iguais(r.primeiro.corpo, 'oi mundo oi', 'texto original preservado');
+        iguais(r.depoisEnter, '2/2');
+        ok(r.fechou, 'Esc fecha a busca');
+        iguais(r.marcasRestantes, 0, 'marcas somem ao fechar');
         semErros(app);
       } finally { app.fechar(); }
     }

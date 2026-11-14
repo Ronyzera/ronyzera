@@ -222,7 +222,7 @@ const testes = [
           const s = srvGet('svImp');
           return { baixado, existe: !!s, salas: s ? s.rooms.map(x => x.name) : [], herdou: s ? s.rooms.some(x => x.id.indexOf('ntg-') === 0) : null };
         })()`);
-        ok(/^ronyzera-servidores-\d{4}-\d{2}-\d{2}\.json$/.test(r.baixado || ''), 'nome do backup');
+        ok(/^ronyzera-backup-\d{4}-\d{2}-\d{2}\.json$/.test(r.baixado || ''), 'nome do backup');
         ok(r.existe, 'backup importado');
         iguais(r.salas, ['Geral']);
         ok(r.herdou === false, 'não pode herdar salas padrão');
@@ -297,6 +297,73 @@ const testes = [
         })()`);
         ok(r.okSave === false, 'deveria sinalizar falha');
         ok(r.aviso, 'faltou o aviso de cota');
+        semErros(app);
+      } finally { app.fechar(); }
+    }
+  },
+  {
+    nome: 'backup completo leva ajustes e perfis e substitui a lista ao restaurar',
+    async fn(){
+      const app = await criarApp();
+      try{
+        await app.run(BASE);
+        const r = await app.run(`(async () => {
+          localStorage.setItem('ntg_theme', 'claro');
+          localStorage.setItem('ntg_profile_testador', JSON.stringify({ password:'1234', photo:null }));
+          localStorage.setItem('ntg_remember', 'testador');
+          const b = backupCompleto();
+          const arquivo = new File([JSON.stringify(b)], 'backup.json', { type:'application/json' });
+          openSettings('servidores');
+          const input = document.getElementById('srvImportFile');
+          Object.defineProperty(input, 'files', { value: [arquivo], configurable: true });
+          localStorage.removeItem('ntg_theme');
+          localStorage.removeItem('ntg_profile_testador');
+          SRV.list = SRV.list.filter(s => s.id === 'ntg');
+          svImportar({ target: input });
+          await new Promise(r => setTimeout(r, 150));
+          return {
+            tipo: b.tipo,
+            semPadrao: b.servidores.every(s => s.id !== 'ntg'),
+            temConfig: b.config.ntg_theme === 'claro',
+            temPerfil: !!b.perfis['ntg_profile_testador'],
+            semLembrete: !('ntg_remember' in b.config),
+            temaVoltou: localStorage.getItem('ntg_theme'),
+            perfilVoltou: !!localStorage.getItem('ntg_profile_testador'),
+            servidorVoltou: !!srvGet('svA')
+          };
+        })()`);
+        iguais(r.tipo, 'completo');
+        ok(r.semPadrao, 'backup não deve guardar o servidor padrão');
+        ok(r.temConfig && r.temPerfil, 'backup completo deve levar ajustes e perfis');
+        ok(r.semLembrete, 'login lembrado não entra no backup');
+        iguais(r.temaVoltou, 'claro', 'tema restaurado');
+        ok(r.perfilVoltou, 'perfil restaurado');
+        ok(r.servidorVoltou, 'servidores substituídos pelo backup');
+        semErros(app);
+      } finally { app.fechar(); }
+    }
+  },
+  {
+    nome: 'dono atualiza salas e quem está em chamada vê a mudança',
+    async fn(){
+      const app = await criarApp();
+      try{
+        await app.run(BASE);
+        const r = await app.run(`(() => {
+          inRoom = true; roomId = 'rA2';
+          PRESET_ROOMS = svRooms('svA');
+          svsMerge([{ id:'svA', name:'Servidor A', owner:'Ronyzera', v:999, img:'', rooms:[
+            { id:'rA1', name:'Geral', icon:'🎮' }, { id:'rA9', name:'Nova', icon:'🎮' }
+          ] }], 'Ronyzera');
+          return {
+            recebeu: svRooms('svA').some(x => x.id === 'rA9'),
+            ids: PRESET_ROOMS.map(x => x.id),
+            nomes: PRESET_ROOMS.map(x => x.name)
+          };
+        })()`);
+        ok(r.recebeu, 'servidor devia ter recebido a sala nova');
+        iguais(r.ids[0], 'rA2', 'sala em uso continua visível no topo');
+        ok(r.nomes.indexOf('Nova') > -1, 'sala nova aparece mesmo em chamada');
         semErros(app);
       } finally { app.fechar(); }
     }

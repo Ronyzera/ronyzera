@@ -18,6 +18,15 @@ function startServer() {
       if (url === '/' || url === '/index.html') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         fs.createReadStream(path.join(__dirname, 'index.html')).pipe(res);
+      } else if (/^\/vendor\/[a-z0-9._-]+$/i.test(url)) {
+        // bibliotecas locais (PeerJS etc.) — evita depender de CDN externa
+        const arq = path.join(__dirname, 'vendor', path.basename(url));
+        fs.readFile(arq, (err, data) => {
+          if (err) { res.writeHead(404); res.end(); return; }
+          const tipo = /\.js$/i.test(arq) ? 'application/javascript; charset=utf-8' : 'application/octet-stream';
+          res.writeHead(200, { 'Content-Type': tipo, 'Cache-Control': 'public, max-age=86400' });
+          res.end(data);
+        });
       } else {
         res.writeHead(404);
         res.end();
@@ -116,6 +125,40 @@ ipcMain.handle('desktop:captureHook', async () => null);   // sem gancho nativo:
 ipcMain.on('desktop:notify', (_e, title, body) => {
   if(!desktopCfg.notifications) return;                    // respeita o interruptor "Avisos do Windows"
   try{ if(Notification.isSupported()) new Notification({ title: String(title || 'RONYZERA').slice(0, 64), body: String(body || '').slice(0, 200) }).show(); }catch(e){}
+});
+
+// ---------- backup automático (cópia diária em %appdata%/RONYZERA/backups) ----------
+function bkDir(){ return path.join(app.getPath('userData'), 'backups'); }
+const BK_NOME = /^backup-\d{4}-\d{2}-\d{2}\.json$/;
+function bkListar(){
+  try{
+    return fs.readdirSync(bkDir()).filter(n => BK_NOME.test(n)).sort().reverse()
+      .map(nome => { const st = fs.statSync(path.join(bkDir(), nome)); return { nome, bytes: st.size, quando: st.mtime.toISOString() }; });
+  }catch(e){ return []; }
+}
+ipcMain.handle('desktop:backupSave', (_e, texto) => {
+  try{
+    const s = String(texto || '');
+    if(s.length < 2 || s.length > 64 * 1024 * 1024) return { ok:false, erro:'backup grande demais' };
+    const d = JSON.parse(s);                               // não grava arquivo corrompido
+    if(!d || d.app !== 'RONYZERA') return { ok:false, erro:'formato inesperado' };
+    fs.mkdirSync(bkDir(), { recursive: true });
+    const nome = 'backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    const arq = path.join(bkDir(), nome);
+    fs.writeFileSync(arq + '.tmp', s, 'utf8');
+    fs.renameSync(arq + '.tmp', arq);                      // troca só depois de gravar tudo
+    const lista = fs.readdirSync(bkDir()).filter(n => BK_NOME.test(n)).sort();
+    while(lista.length > 7){ try{ fs.unlinkSync(path.join(bkDir(), lista.shift())); }catch(e){} }
+    return { ok:true, arquivo:arq, nome };
+  }catch(e){ return { ok:false, erro: String((e && e.message) || e) }; }
+});
+ipcMain.handle('desktop:backupList', () => bkListar());
+ipcMain.handle('desktop:backupRead', (_e, nome) => {
+  try{
+    const n = String(nome || '');
+    if(!BK_NOME.test(n)) return null;
+    return fs.readFileSync(path.join(bkDir(), n), 'utf8');
+  }catch(e){ return null; }
 });
 
 function setupSession() {
