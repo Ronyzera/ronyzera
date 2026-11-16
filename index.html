@@ -3499,6 +3499,19 @@ function settingsModalEl(){
             '</div>' +
             '<div class="setAvHint" id="setTurnInfo" style="margin-top:8px"></div>' +
           '</div>' +
+          (window.desktop && window.desktop.setSettings ? (
+            '<div class="setAudioField" style="margin-top:22px"><label for="setCfKey">Cloudflare TURN (grátis, 1 TB/mês)</label>' +
+              '<div class="setAvHint" style="margin:0 0 8px">Não precisa editar arquivo: crie a chave em <b>Cloudflare → Realtime → TURN</b>, copie o <b>Key ID</b> e o <b>API Token</b> e cole aqui. O app pede credenciais novas sozinho, quando expiram.</div>' +
+              '<input type="text" id="setCfKey" style="margin-bottom:6px" placeholder="Key ID" autocomplete="off" spellcheck="false">' +
+              '<input type="password" id="setCfToken" placeholder="API Token (aparece só uma vez, na criação)" autocomplete="off" spellcheck="false">' +
+              '<div class="srvBkRow" style="margin-top:8px">' +
+                '<button type="button" class="srvBkBtn" id="setCfTest">☁ Testar Cloudflare</button>' +
+                '<button type="button" class="srvBkBtn" id="setCfSave">Salvar Cloudflare</button>' +
+                '<button type="button" class="srvBkBtn" id="setCfClear">Remover</button>' +
+              '</div>' +
+              '<div class="setAvHint" id="setCfInfo" style="margin-top:8px"></div>' +
+            '</div>'
+          ) : '') +
         '</div>' +
         '<div id="setPaneTema" class="setPane hidden">' +
           '<h3>Tema do app</h3>' +
@@ -3593,6 +3606,52 @@ function settingsModalEl(){
       turnSalvarDoUsuario(null);
       turnUrls.value = ''; tUser.value = ''; tPass.value = '';
       tInfo.textContent = 'TURN removido — voltou a usar só o padrão do app.';
+    });
+  }
+  // Cloudflare TURN: o app instalado troca a chave por credenciais temporárias; a chave fica só no PC.
+  const cfKey = m.querySelector('#setCfKey');
+  if(cfKey && window.desktop && window.desktop.setSettings){
+    const cfTok = m.querySelector('#setCfToken'), cfInfo = m.querySelector('#setCfInfo');
+    const cfLida = () => ({ keyId: cfKey.value.trim(), token: cfTok.value.trim(), ttl: 86400 });
+    const cfSalvar = async cfg => { try{ await window.desktop.setSettings({ cloudflareTurn: cfg }); return true; }catch(e){ return false; } };
+    const cfAplicar = async () => { iceLoaded = false; try{ await loadIceServers(); }catch(e){} };
+    const cfPronto = () => {
+      const c = cfLida();
+      if(!c.keyId || !c.token){ cfInfo.textContent = 'Cole o Key ID e o API Token da Cloudflare (precisa dos dois).'; return null; }
+      return c;
+    };
+    if(window.desktop.getSettings) window.desktop.getSettings().then(r => {
+      const c = r && r.settings && r.settings.cloudflareTurn;
+      if(c && c.keyId){ cfKey.value = c.keyId; cfTok.value = c.token || ''; cfInfo.textContent = '☁ Cloudflare já configurado neste computador.'; }
+    }).catch(() => {});
+    m.querySelector('#setCfSave').addEventListener('click', async () => {
+      const cfg = cfPronto(); if(!cfg) return;
+      cfInfo.textContent = '☁ Salvando...';
+      if(!await cfSalvar(cfg)){ cfInfo.textContent = '❌ Não consegui salvar (o app instalado não respondeu).'; return; }
+      await cfAplicar();
+      cfInfo.textContent = '✅ Cloudflare salvo. Saia e entre na sala para valer nas chamadas.';
+      try{ botToast('☁ Cloudflare TURN salvo.'); }catch(e){}
+    });
+    m.querySelector('#setCfTest').addEventListener('click', async () => {
+      const cfg = cfPronto(); if(!cfg) return;
+      cfInfo.textContent = '☁ Salvando e pedindo credenciais à Cloudflare...';
+      await cfSalvar(cfg);
+      await cfAplicar();
+      let lista = [];
+      try{ lista = await window.desktop.iceServers(); }catch(e){}
+      const cf = (Array.isArray(lista) ? lista : []).filter(s => (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => /cloudflare\.com/i.test(String(u))));
+      if(!cf.length){ cfInfo.textContent = '❌ A Cloudflare não devolveu credenciais — confira o Key ID e o API Token (o token só aparece uma vez, na criação da chave).'; return; }
+      cfInfo.textContent = '🔌 Credenciais recebidas. Testando o relay...';
+      const r = await testarTurn({ urls: cf[0].urls, username: cf[0].username, credential: cf[0].credential });
+      cfInfo.textContent = r.ok
+        ? '✅ Cloudflare TURN funcionando — voz e tela vão passar por ele.'
+        : '❌ O relay da Cloudflare não respondeu (' + r.motivo + '). Tente de novo em alguns segundos.';
+    });
+    m.querySelector('#setCfClear').addEventListener('click', async () => {
+      await cfSalvar(null);
+      cfKey.value = ''; cfTok.value = '';
+      await cfAplicar();
+      cfInfo.textContent = 'Cloudflare removido — voltou a usar o TURN padrão do app.';
     });
   }
   m.querySelectorAll('#setPanePerfil, #setPaneAudio, #setPaneTema').forEach(b => b.addEventListener('click', e => e.target.closest('[data-themesel]') && themeApply(e.target.closest('[data-themesel]').dataset.themesel)));

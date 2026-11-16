@@ -132,6 +132,52 @@ const testes = [
         semErros(app);
       } finally { app.fechar(); }
     }
+  },
+  {
+    nome: 'configurações: campo Cloudflare só aparece no app instalado',
+    async fn(){
+      const app = await criarApp();
+      try{
+        const r = await app.run(`(() => {
+          openSettings('audio');
+          return { temDesktop: !!window.desktop, temCampo: !!document.getElementById('setCfKey') };
+        })()`);
+        iguais(r.temDesktop, false, 'o teste roda no navegador (sem ponte do desktop)');
+        iguais(r.temCampo, false, 'sem app instalado não pode aparecer campo de Cloudflare');
+        semErros(app);
+      } finally { app.fechar(); }
+    }
+  },
+  {
+    nome: 'configurações: Cloudflare salvo no app vira relay na frente da lista',
+    async fn(){
+      const app = await criarApp();
+      try{
+        const r = await app.run(`(async () => {
+          const salvos = [];
+          window.desktop = {
+            getSettings: async () => ({ settings: {} }),
+            setSettings: async cfg => { salvos.push(cfg); return { settings: cfg }; },
+            iceServers: async () => ([{ urls: 'turn:turn.cloudflare.com:3478?transport=udp', username: 'u-cf', credential: 'p-cf' }])
+          };
+          openSettings('audio');
+          const temCampos = !!(document.getElementById('setCfKey') && document.getElementById('setCfToken') && document.getElementById('setCfTest'));
+          document.getElementById('setCfKey').value = 'kid-123';
+          document.getElementById('setCfToken').value = 'tok-456';
+          document.getElementById('setCfSave').click();
+          await new Promise(r => setTimeout(r, 40));
+          return { temCampos, salvos, primeiro: ICE_SERVERS[0], info: document.getElementById('setCfInfo').textContent };
+        })()`);
+        iguais(r.temCampos, true, 'no app instalado a aba Voz e vídeo precisa dos campos do Cloudflare');
+        const cf = r.salvos.filter(x => x && x.cloudflareTurn).pop();
+        ok(!!cf, 'tem que gravar a chave no app: ' + JSON.stringify(r.salvos));
+        iguais(cf.cloudflareTurn.keyId, 'kid-123');
+        iguais(cf.cloudflareTurn.token, 'tok-456');
+        iguais(r.primeiro.username, 'u-cf', 'a credencial do Cloudflare entra na frente do padrão');
+        ok(/salvo/i.test(r.info), 'a tela confirma que salvou: ' + r.info);
+        semErros(app);
+      } finally { app.fechar(); }
+    }
   }
 ];
 

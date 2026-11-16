@@ -117,6 +117,7 @@ ipcMain.handle('desktop:setSettings', (_e, cfg) => {
   try{
     if(cfg && typeof cfg === 'object'){
       desktopCfg = Object.assign(desktopCfg, cfg, { ptt: Object.assign({}, desktopCfg.ptt, (cfg && cfg.ptt) || {}) });
+      if(cfg.cloudflareTurn !== undefined) cfCache = { em: 0, ttl: 0, ice: null };   // chave nova: pede credenciais de novo
       saveCfg(); applyAutostart(); ensureTray();
     }
   }catch(e){}
