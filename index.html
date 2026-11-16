@@ -3500,8 +3500,8 @@ function settingsModalEl(){
             '<div class="setAvHint" id="setTurnInfo" style="margin-top:8px"></div>' +
           '</div>' +
           (window.desktop && window.desktop.setSettings ? (
-            '<div class="setAudioField" style="margin-top:22px"><label for="setCfKey">Cloudflare TURN (grátis, 1 TB/mês)</label>' +
-              '<div class="setAvHint" style="margin:0 0 8px">Não precisa editar arquivo: crie a chave em <b>Cloudflare → Realtime → TURN</b>, copie o <b>Key ID</b> e o <b>API Token</b> e cole aqui. O app pede credenciais novas sozinho, quando expiram.</div>' +
+            '<div class="setAudioField" style="margin-top:22px"><label for="setCfKey">Cloudflare TURN (relay pago por GB)</label>' +
+              '<div class="setAvHint" style="margin:0 0 8px">Não precisa editar arquivo: crie a chave em <b>Cloudflare → Realtime → TURN</b>, copie o <b>Key ID</b> e o <b>API Token</b> e cole aqui. O app pede credenciais novas sozinho, quando expiram. A Cloudflare cobra por GB fora do plano grátis (~US$ 0,05/GB; voz gasta uns 40 MB por hora).</div>' +
               '<input type="text" id="setCfKey" style="margin-bottom:6px" placeholder="Key ID" autocomplete="off" spellcheck="false">' +
               '<input type="password" id="setCfToken" placeholder="API Token (aparece só uma vez, na criação)" autocomplete="off" spellcheck="false">' +
               '<div class="srvBkRow" style="margin-top:8px">' +
