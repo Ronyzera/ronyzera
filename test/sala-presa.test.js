@@ -204,6 +204,53 @@ const testes = [
         semErros(app);
       } finally { app.fechar(); }
     }
+  },
+  {
+    nome: 'sozinho e com gente em outra geração: entra na sala do pessoal e larga a vazia',
+    async fn(){
+      const app = await criarApp();
+      try{
+        const r = await app.run(`(async () => {
+          const mortos = [];
+          roomId = 'sala-z'; leaving = false; recovering = false; inRoom = true;
+          isDirectory = true; dirLocalId = 'dir-sala-z';
+          dirPeer = { destroy(){ mortos.push('vazio'); }, destroyed: false };
+          peer = { destroyed: false };
+          myId = 'eu-z'; knownPeers.clear();
+          broadcastMyState = () => {};
+          window.salaSondar = async (p, ids) => ids.map(id => id === 'dir-sala-z-2' ? { id, conn: { open: true, peer: id, send(){}, on(){}, close(){} } } : { id, livre: true });
+          const juntou = await salaJuntarSeSozinho();
+          return { juntou, mortos, dir: isDirectory, dono: dirConn && dirConn.peer, endereco: dirLocalId };
+        })()`);
+        iguais(r.juntou, true, 'tem que entrar na sala onde o pessoal está');
+        iguais(r.mortos, ['vazio'], 'a sala vazia que eu segurava tem que ser largada');
+        iguais(r.dir, false, 'deixa de ser anfitrião da sala vazia');
+        iguais(r.dono, 'dir-sala-z-2', 'passa a usar o canal do anfitrião encontrado');
+        semErros(app);
+      } finally { app.fechar(); }
+    }
+  },
+  {
+    nome: 'com gente na sala não sai procurando outra',
+    async fn(){
+      const app = await criarApp();
+      try{
+        const r = await app.run(`(async () => {
+          roomId = 'sala-w'; leaving = false; inRoom = true; isDirectory = true; dirLocalId = 'dir-sala-w';
+          dirPeer = { destroy(){ throw new Error('não devia largar a sala'); }, destroyed: false };
+          peer = { destroyed: false };
+          myId = 'eu-w'; knownPeers.clear(); knownPeers.set('amigo', 'Amigo');
+          let sondou = 0;
+          window.salaSondar = async () => { sondou++; return []; };
+          const juntou = await salaJuntarSeSozinho();
+          return { juntou, sondou, dir: isDirectory };
+        })()`);
+        iguais(r.juntou, false);
+        iguais(r.sondou, 0, 'não pode ficar sondando quando a sala já tem gente');
+        iguais(r.dir, true);
+        semErros(app);
+      } finally { app.fechar(); }
+    }
   }
 ];
 

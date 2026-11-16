@@ -1418,6 +1418,9 @@ function broadcastMyState(){
   }catch(e){}
 }
 let dirPeer = null, dirOwnerId = null, leaving = false, recovering = false, pruneOnRoster = false;
+let dirLocalId = '';       // endereço (dir-<sala>[-N]) que EU estou segurando/usando agora
+// Junção automática: quem ficou sozinho numa sala dividida procura o pessoal nas outras gerações.
+let salaMergeEm = 0, salaMergeBusy = false;
 let joinSeq = 0;                 // "geração" da entrada na sala: invalida uma entrada antiga ainda em andamento
 
 let myId, myName = 'Você', myAccountName = '', roomId;
@@ -4068,6 +4071,35 @@ function soltarIdsDaSala(){
   const atuais = new Set([peer, dirPeer].filter(Boolean));
   livePeers.forEach(p => { if(p && ids.has(p.id) && !atuais.has(p)){ try{ p.destroy(); }catch(e){} } });
 }
+// Sala dividida em duas (cada um sozinho com o mesmo nome): acontece quando o endereço principal fica
+// preso, o pessoal abre a geração seguinte e a principal é liberada depois — quem entra por último cai
+// na vazia. Enquanto eu for o anfitrião e estiver sozinho, procuro as outras gerações e a sala "irmã"
+// (mesmo nome, outro endereço). Achando gente, entro nela e largo a sala vazia que eu estava segurando.
+async function salaJuntarSeSozinho(){
+  if(leaving || recovering || !isDirectory || !peer || peer.destroyed) return false;
+  if(countInRoom() > 1) return false;                    // já tem gente aqui: nada a juntar
+  if(Date.now() - salaMergeEm < 12000 || salaMergeBusy) return false;
+  salaMergeEm = Date.now(); salaMergeBusy = true;
+  try{
+    const meu = dirLocalId || ('dir-' + roomId);
+    const outros = salaIds(roomId).filter(id => id !== meu);
+    const res = await salaSondar(peer, outros, 5000);
+    let dono = res.find(x => x.conn);
+    if(!dono){
+      const irma = await salaIrmaComDono();
+      if(irma) dono = { conn: irma, id: irma.peer };
+    }
+    if(!dono || leaving) return false;
+    const vazio = dirPeer;
+    isDirectory = false; dirPeer = null;
+    try{ if(vazio) vazio.destroy(); }catch(e){}      // larga o endereço vazio (quem chegar aqui é redirecionado)
+    adoptDirectory(dono.conn, true);
+    joinedRoom = true; renderPeopleList(); setStatus('Conectado', true);
+    try{ botToast('🔗 Entrei na sala onde o pessoal estava.'); }catch(e){}
+    return true;
+  }catch(e){ return false; }
+  finally{ salaMergeBusy = false; }
+}
 
 const mutedPeers = new Set();
 const peerVolumes = new Map();
@@ -5628,6 +5660,7 @@ function startDirectoryServer(p){
 // ----- Troca automática de anfitrião -----
 function adoptDirectory(c, prune){
   dirConn = c;
+  dirLocalId = (c && c.peer) || dirLocalId;
   pruneOnRoster = !!prune;
   lastDirSeen = Date.now();
   c.on('data', handleClientData);
@@ -5669,7 +5702,7 @@ async function claimDirectory(dirId, comoAnfitriao){
   try{
     const p = await createPeer(dirId);
     if(leaving){ try{ p.destroy(); }catch(e){} return false; }
-    dirPeer = p; isDirectory = true; dirOwnerId = myId;
+    dirPeer = p; isDirectory = true; dirOwnerId = myId; dirLocalId = dirId;
     startDirectoryServer(p);
     joinedRoom = true;
     knownPeers.set(myId, myName);
@@ -5740,7 +5773,11 @@ async function recoverDirectory(aviso){
         return;
       }
       for(const id of alt.livres){
-        if(await claimDirectory(id)){ recovering = false; recuperaCiclos = 0; return; }
+        if(await claimDirectory(id)){ recovering = false; recuperaCiclos = 0;
+          // Abriu uma geração nova: avisa que a sala principal existia mas não respondeu (rede), senão
+          // parece que "ninguém está na sala" quando na verdade o pessoal está no outro endereço.
+          if(id !== ids[0]) try{ botToast('🎮 Abri uma sala nova com o mesmo nome: a principal não respondeu (rede/NAT). Se seus amigos estão nela, ative um servidor TURN em Configurações → Voz e vídeo.'); }catch(e){}
+          return; }
       }
       olhouGeracoes = false;     // nada livre nesta volta: tenta de novo na próxima
     }
@@ -6547,6 +6584,8 @@ function healNow(){
   if(!isDirectory && dirConn && silenciosoHa(lastDirSeen, Date.now(), HOST_SILENCIO_MS)){ const c = dirConn; try{ c.close(); }catch(e){} onDirectoryLost(c); }
   // 1c) avisa o anfitrião que ainda está na sala (senão o watchdog dele te tira por inatividade)
   if(!isDirectory && dirConn && dirConn.open) try{ dirConn.send({ type:'ping' }); }catch(e){}
+  // 1d) sozinho na sala mesmo sendo anfitrião: pode ser sala dividida — procura o pessoal nas outras gerações
+  if(isDirectory) salaJuntarSeSozinho();
   // 2) refaz chamadas de voz/câmera que caíram
   const now = Date.now();
   knownPeers.forEach((name, id) => {
@@ -6680,6 +6719,7 @@ function backToLobby(msg){
   try{ if(peer) peer.destroy(); }catch(e){}
   try{ if(dirPeer) dirPeer.destroy(); }catch(e){}
   peer = null; dirPeer = null; isDirectory = false; myId = null; dirOwnerId = null;
+  dirLocalId = '';
   soltarIdsDaSala();
   try{ if(typeof dirConn !== 'undefined') dirConn = null; }catch(e){}
   if(localMic){ nsStop(); localMic = null; }
@@ -6956,6 +6996,7 @@ function leaveRoom(){
   try{ nsStop(); }catch(e){}
   if(peer) peer.destroy();
   peer = null; dirConn = null; dirPeer = null; dirOwnerId = null; isDirectory = false; joinedRoom = false; inRoom = false;
+  dirLocalId = '';
   knownPeers.clear();
 }
 /* ===== Diagnóstico: microfone (nível ao vivo) + rede ===== */
@@ -7132,6 +7173,20 @@ async function diagSalaTestar(){
   linhas.push([isDirectory ? 'Sala (você é o anfitrião)' : 'Endereço da sala',
     'dir-' + roomId + (ultimaFalhaDir ? ' · ' + ultimaFalhaDir : ''),
     isDirectory ? 'dgOk' : (ultimaFalhaDir === 'sem-resposta' ? 'dgWarn' : 'dgOk')]);
+  // Outras cópias da mesma sala (gerações): se alguma tiver anfitrião, é ali que o pessoal está —
+  // é assim que dá para saber que a sala foi dividida em dois endereços.
+  if(peer && !peer.destroyed){
+    try{
+      const meu = dirLocalId || ('dir-' + roomId);
+      const outros = salaIds(roomId).filter(id => id !== meu);
+      const res = await salaSondar(peer, outros, 2500);
+      const comDono = res.filter(x => x.conn);
+      if(comDono.length){
+        comDono.forEach(x => { try{ x.conn.close(); }catch(e){} });
+        linhas.push(['Outra cópia desta sala', comDono.map(x => x.id.replace(/^dir-/, '')).join(', '), 'dgWarn']);
+      }
+    }catch(e){}
+  }
   const gente = [...knownPeers.entries()].filter(([id]) => id !== myId);
   if(!gente.length) linhas.push(['Ninguém na sala', 'aguardando', 'dgWarn']);
   const bytes = await Promise.all(gente.map(([id]) => diagSalaBytes((incoming.get(id+'|mic') || {}).peerConnection)));
