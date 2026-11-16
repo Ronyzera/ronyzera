@@ -174,8 +174,10 @@ button.danger{background:transparent;color:var(--danger);border-color:var(--dang
 /* palco: dois modos — 'cartões' (padrão) e 'ao vivo' (vídeo). Os cartões SÓ somem quando você escolhe assistir */
 #stage.live .stage-empty{display:none}
 #stage:not(.live) .stile{display:none}
-.pcWatch{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:5px 12px;border:0;border-radius:14px;background:linear-gradient(100deg,#e5183c,#ff1fc9);color:#fff;font-weight:800;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;z-index:2;box-shadow:0 2px 12px rgba(229,24,60,.5);transition:filter .12s}
-.pcWatch:hover{filter:brightness(1.2);box-shadow:0 0 14px rgba(255,31,201,.7)}
+/* botão "ver tela" das cartas: texto em UMA linha (antes quebrava em 3 e ficava enorme) e sempre centrado no hover */
+.pcWatch{position:absolute;top:8px;left:50%;transform:translateX(-50%);padding:3px 9px;border:0;border-radius:12px;background:linear-gradient(100deg,#e5183c,#ff1fc9);color:#fff;font-weight:800;font-size:.62rem;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;max-width:calc(100% - 12px);overflow:hidden;cursor:pointer;z-index:2;box-shadow:0 2px 12px rgba(229,24,60,.5);transition:filter .12s,box-shadow .12s}
+/* o button:hover global troca o transform e o botão pulava para a direita: recoloca o -50% */
+.pcWatch:hover,.pcWatch:active{filter:brightness(1.2);box-shadow:0 0 14px rgba(255,31,201,.7);transform:translateX(-50%)}
 .mWatch{margin-left:4px;padding:2px 7px;border:1px solid rgba(255,31,201,.5);border-radius:9px;background:rgba(255,31,201,.12);color:var(--magenta);font-weight:700;font-size:.62rem;letter-spacing:.03em;cursor:pointer;transition:background .12s,color .12s}
 .mWatch:hover{background:var(--magenta);color:#05020c}
 .qualityBox{display:flex;flex-direction:column;gap:4px;font-size:.78rem}
@@ -705,7 +707,9 @@ body:has(#callCard:not(.hidden)) .wrap > .hr{display:none}
 #dxRank .rr:nth-child(2){margin-top:2px}
 #dxRank .rr.me{background:rgba(0,246,255,.09);box-shadow:inset 2px 0 0 var(--cyan)}
 #dxRank .rr .pos{width:26px;text-align:center;font-weight:800;font-size:.95rem;color:var(--muted);flex:0 0 26px}
-#dxRank .rr .rkAv{width:30px;height:30px;flex:0 0 30px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,var(--purple),var(--magenta))}
+#dxRank .rr .rkAv{width:30px;height:30px;flex:0 0 30px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--purple),var(--magenta));color:#fff;font-weight:800;font-size:.85rem;line-height:1;text-transform:uppercase}
+/* a foto precisa ser recortada no círculo (antes vinha no tamanho original e só aparecia um canto) */
+#dxRank .rr .rkAv img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;border-radius:50%}
 #dxRank .rr .rkn{min-width:0;flex:1;font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #dxRank .rr .rrh{font-weight:800;color:var(--cyan);font-variant-numeric:tabular-nums;font-size:.9rem}
 #dxRank .rr .rrh.off{color:var(--muted);font-weight:600}
@@ -993,6 +997,7 @@ body:has(#joinCard:not(.hidden)) .brand h1::before,body:has(#joinCard:not(.hidde
   .spCards{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
   .spCards.one{max-width:100%}
   .pcard .pname{font-size:.68rem;letter-spacing:.06em;left:6px;bottom:6px;padding:3px 6px;max-width:calc(100% - 50px)}
+  .pcard .pcWatch{top:6px;padding:2px 7px;font-size:.58rem}
   .stile.screen{flex:1 1 100%}
   .stile.cam{flex:0 0 46%}
   .stile.screen.off{height:70px}
@@ -1410,6 +1415,7 @@ function broadcastMyState(){
   }catch(e){}
 }
 let dirPeer = null, dirOwnerId = null, leaving = false, recovering = false, pruneOnRoster = false;
+let joinSeq = 0;                 // "geração" da entrada na sala: invalida uma entrada antiga ainda em andamento
 
 let myId, myName = 'Você', myAccountName = '', roomId;
 function isAdmin(){ return String(myAccountName || myName || '').trim().toLowerCase() === 'rony'; }   // RONY pode desconectar qualquer pessoa
@@ -2877,27 +2883,28 @@ async function startLobbyPresence(){
     lp.on('close', () => { if(lobbyPeer === lp) lobbyPeer = null; });
   }catch(e){}
 }
-function peekRoom(p, id){
-  return new Promise(resolve => {
-    const target = 'dir-' + id;
-    let c;
-    try{ c = p.connect(target, { metadata: { role: 'peek' }, reliable: true }); }catch(e){ return resolve(null); }
+async function peekRoom(p, id){
+  // A sala pode estar numa geração seguinte (id antigo preso): procura o anfitrião em todas de uma vez.
+  const res = await salaSondar(p, salaIds(id), 5000, { role: 'peek' });
+  const vivo = res.find(x => x.conn);
+  if(!vivo) return res.some(x => x.livre) ? [] : null;   // vazio: sala sem ninguém / null: sem resposta (mantém o que sabia)
+  const c = vivo.conn;
+  return await new Promise(resolve => {
     let done = false;
     const fin = v => {
       if(done) return; done = true;
-      clearTimeout(t); p.off('error', onErr);
+      clearTimeout(t);
       try{ c.close(); }catch(e){}
       resolve(v);
     };
-    const onErr = e => { if(e && e.type === 'peer-unavailable' && String(e.message || '').endsWith(target)) fin([]); };  // ninguém na sala
-    const t = setTimeout(() => fin(null), 9000);                                                                          // sem resposta: mantém o que já sabia
-    p.on('error', onErr);
+    const t = setTimeout(() => fin(null), 2500);
     c.on('data', d => {
       if(!d || d.type !== 'peek-roster') return;
       if(Array.isArray(d.members)) fin(d.members.slice(0, 12).map(m => ({ name: String((m && m.name) || '?').slice(0, 24), photo: (m && m.photo) || null, live: !!(m && m.live) })));
       else if(Array.isArray(d.names)) fin(d.names.slice(0, 12).map(n => ({ name: String(n).slice(0, 24), photo: null })));   // compat com versão antiga
     });
     c.once('error', () => fin(null));
+    c.once('close', () => fin(null));
   });
 }
 let polling = false;
@@ -2965,17 +2972,72 @@ renderPresetRooms();
 // inclusive usuário/senha temporários do coturn. No navegador/APK o site pode publicar um "turn.json"
 // ao lado do index.html com { urls, username, credential } e ligar a busca com
 // <meta name="ronyzera-turn" content="turn.json"> — sem isso sobram só os STUN.
-let ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478', 'stun:stun.relay.metered.ca:80'] }
-];
+const ICE_STUN = { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478', 'stun:stun.relay.metered.ca:80'] };
+let ICE_BASE = [ICE_STUN];
+let ICE_SERVERS = ICE_BASE.slice();
 let iceLoaded = false;
+// TURN do próprio usuário (Configurações → Voz e vídeo). É o que resolve NAT restrito/CGNAT: com dois
+// NATs simétricos nenhuma conexão direta abre e a voz/tela só passa por um servidor de relay. Fica no
+// localStorage (vale no app, no site e no APK) e entra na frente do TURN padrão do app.
+const TURN_CHAVE = 'ntg_turn';
+function turnDoUsuario(){
+  try{
+    const cfg = JSON.parse(localStorage.getItem(TURN_CHAVE) || 'null');
+    if(!cfg) return null;
+    const urls = (Array.isArray(cfg.urls) ? cfg.urls : String(cfg.urls || '').split(','))
+      .map(u => String(u).trim()).filter(u => /^turns?:\S+:\d+/i.test(u));
+    if(!urls.length) return null;
+    return { urls, username: String(cfg.username || ''), credential: String(cfg.credential || '') };
+  }catch(e){ return null; }
+}
+function montarIceServers(){
+  const meu = turnDoUsuario();
+  ICE_SERVERS = meu ? [meu].concat(ICE_BASE) : ICE_BASE.slice();
+  return ICE_SERVERS;
+}
+function turnSalvarDoUsuario(cfg){
+  try{
+    if(cfg) localStorage.setItem(TURN_CHAVE, JSON.stringify(cfg));
+    else localStorage.removeItem(TURN_CHAVE);
+  }catch(e){}
+  iceLoaded = false;                 // a lista é recalculada na hora e vale para as próximas conexões
+  montarIceServers();
+  return !!cfg;
+}
+// Testa um TURN de verdade: pede um endereço de relay e espera o servidor entregar.
+// (Só "ver se o host responde" não serve: credencial inválida ou cota estourada responde 401.)
+function testarTurn(cfg, limiteMs){
+  return new Promise(resolve => {
+    const urls = (Array.isArray(cfg && cfg.urls) ? cfg.urls : [cfg && cfg.urls]).map(u => String(u || '').trim()).filter(Boolean);
+    if(!urls.length) return resolve({ ok:false, motivo:'sem endereço' });
+    let pc = null, done = false;
+    const fim = (ok, motivo) => {
+      if(done) return; done = true;
+      try{ pc.close(); }catch(e){}
+      resolve({ ok, motivo });
+    };
+    try{
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls, username: String(cfg.username || ''), credential: String(cfg.credential || '') }],
+        iceTransportPolicy: 'relay'
+      });
+      pc.createDataChannel('t');
+      pc.onicecandidate = e => {
+        if(!e.candidate) return fim(false, 'sem relay');
+        if(e.candidate.type === 'relay') fim(true, 'ok');
+      };
+      pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => fim(false, 'SDP recusado'));
+      setTimeout(() => fim(false, 'sem relay'), Number(limiteMs) > 0 ? Number(limiteMs) : 9000);
+    }catch(e){ fim(false, 'erro'); }
+  });
+}
 async function loadIceServers(){
   if(iceLoaded) return;
   iceLoaded = true;
   try{
     if(window.desktop && window.desktop.iceServers){
       const lista = await window.desktop.iceServers();
-      if(Array.isArray(lista) && lista.length){ ICE_SERVERS = lista; return; }
+      if(Array.isArray(lista) && lista.length){ ICE_BASE = lista; montarIceServers(); return; }
     }
   }catch(e){}
   // navegador/APK: credencial opcional publicada junto do site. Só busca quando o HTML avisa
@@ -2990,8 +3052,9 @@ async function loadIceServers(){
         const cfg = await r.json();
         const urls = Array.isArray(cfg && cfg.urls) ? cfg.urls.map(String) : (cfg && cfg.urls ? [String(cfg.urls)] : []);
         if(urls.length && cfg.username && cfg.credential){
-          ICE_SERVERS = ICE_SERVERS.concat([{ urls: urls, username: String(cfg.username), credential: String(cfg.credential) }]);
+          ICE_BASE = ICE_BASE.concat([{ urls, username: String(cfg.username), credential: String(cfg.credential) }]);
         }
+        montarIceServers();
       }
     }
   }catch(e){}
@@ -3018,10 +3081,10 @@ function diagnoseNetwork(timeoutMs){
   });
 }
 function describeNet(d){
-  if(d.relay) return 'Sua rede está ok (o servidor TURN respondeu).';
+  if(d.relay) return 'Sua rede está ok (o servidor TURN respondeu) — voz e tela podem passar pelo relay.';
   if(d.srflx === 0) return 'Sua conexão não alcançou nenhum servidor de rede: o WebRTC/UDP está bloqueado. Desligue VPN, antivírus ou extensões que bloqueiam WebRTC (teste em janela anônima) ou troque de rede (Wi-Fi ↔ dados móveis).';
-  if(d.srflx > 1) return 'Sua internet usa um NAT restrito (comum em dados móveis e CGNAT): a conexão direta com seus amigos falha. Tente outra rede (Wi-Fi) ou configure o servidor TURN no código.';
-  return 'Sua rede parece normal, mas a conexão com a sala falhou. Teste em janela anônima (extensões podem bloquear WebRTC) ou configure o servidor TURN no código.';
+  if(d.srflx > 1) return 'Seu provedor te colocou atrás de CGNAT (o mesmo IP público muda de porta: NAT restrito). Sem um TURN funcionando, voz e tela não abrem com quem também está atrás de CGNAT — mesmo que o chat funcione. Abra "Configurar TURN" e cole os dados de um servidor TURN (coturn, metered.ca, Cloudflare...), ou use uma rede sem CGNAT.';
+  return 'Sua rede parece normal, mas o TURN não respondeu: se a voz falhar com alguém, configure um TURN em Configurações → Voz e vídeo.';
 }
 // ============ FILTRO DE RUÍDO DO MICROFONE (opcional, por usuário) ============
 // Duas camadas: (1) supressão de ruído nativa do navegador e (2) um noise gate adaptativo
@@ -3418,6 +3481,18 @@ function settingsModalEl(){
           '<div class="setAudioField"><label for="setSpkSelect">Alto-falante / headset</label><select id="setSpkSelect"></select></div>' +
           '<div class="setAudioField"><label for="setCamSelect">Câmera</label><select id="setCamSelect"></select></div>' +
           '<div class="setAudioField"><button type="button" class="srvBkBtn" id="setMicTestBtn" style="margin-top:6px">🎙 Testar microfone e rede</button></div>' +
+          '<div class="setAudioField" style="margin-top:20px"><label for="setTurnUrls">Servidor TURN (relay de voz e tela)</label>' +
+            '<div class="setAvHint" style="margin:0 0 8px">Só precisa quando o teste de rede avisa <b>NAT restrito/CGNAT</b> — nesse caso a voz e a tela só passam por um servidor de relay. Cole os dados do seu TURN (coturn, metered.ca, Cloudflare...).</div>' +
+            '<input type="text" id="setTurnUrls" style="margin-bottom:6px" placeholder="turn:seu-servidor.com:3478, turns:seu-servidor.com:443?transport=tcp">' +
+            '<input type="text" id="setTurnUser" style="margin-bottom:6px" placeholder="usuário">' +
+            '<input type="text" id="setTurnPass" placeholder="senha">' +
+            '<div class="srvBkRow" style="margin-top:8px">' +
+              '<button type="button" class="srvBkBtn" id="setTurnTest">🔌 Testar TURN</button>' +
+              '<button type="button" class="srvBkBtn" id="setTurnSave">Salvar TURN</button>' +
+              '<button type="button" class="srvBkBtn" id="setTurnClear">Remover</button>' +
+            '</div>' +
+            '<div class="setAvHint" id="setTurnInfo" style="margin-top:8px"></div>' +
+          '</div>' +
         '</div>' +
         '<div id="setPaneTema" class="setPane hidden">' +
           '<h3>Tema do app</h3>' +
@@ -3481,6 +3556,39 @@ function settingsModalEl(){
   m.querySelector('#setSpkSelect').addEventListener('change', e => switchSpeaker(e.target.value));
   m.querySelector('#setCamSelect').addEventListener('change', e => switchCam(e.target.value));
   const micTestBtn = m.querySelector('#setMicTestBtn'); if(micTestBtn) micTestBtn.addEventListener('click', () => diagOpen());
+  // TURN do usuário: ler, testar (relay de verdade), salvar e remover — vale para voz, tela e chat.
+  const turnUrls = m.querySelector('#setTurnUrls');
+  if(turnUrls){
+    const tUser = m.querySelector('#setTurnUser'), tPass = m.querySelector('#setTurnPass'), tInfo = m.querySelector('#setTurnInfo');
+    const atualTurn = turnDoUsuario();
+    if(atualTurn){ turnUrls.value = atualTurn.urls.join(', '); tUser.value = atualTurn.username; tPass.value = atualTurn.credential; }
+    const lerTurn = () => ({
+      urls: turnUrls.value.split(',').map(s => s.trim()).filter(Boolean),
+      username: tUser.value.trim(),
+      credential: tPass.value.trim()
+    });
+    m.querySelector('#setTurnTest').addEventListener('click', async () => {
+      const cfg = lerTurn();
+      if(!cfg.urls.length){ tInfo.textContent = 'Cole o endereço do TURN primeiro (ex.: turn:meu-servidor.com:3478).'; return; }
+      tInfo.textContent = '🔌 Testando... o servidor precisa devolver um endereço de relay.';
+      const r = await testarTurn(cfg);
+      tInfo.textContent = r.ok
+        ? '✅ TURN funcionando — voz e tela vão passar por ele.'
+        : '❌ TURN não respondeu (' + r.motivo + '). Confira endereço, usuário, senha e se a cota do serviço não estourou.';
+    });
+    m.querySelector('#setTurnSave').addEventListener('click', () => {
+      const cfg = lerTurn();
+      if(!cfg.urls.length){ turnSalvarDoUsuario(null); tInfo.textContent = 'TURN removido — voltou a usar só o padrão do app.'; return; }
+      turnSalvarDoUsuario(cfg);
+      tInfo.textContent = '✅ Salvo. Vale para as próximas conexões — saia e entre na sala para aplicar.';
+      try{ botToast('🔌 Servidor TURN salvo.'); }catch(e){}
+    });
+    m.querySelector('#setTurnClear').addEventListener('click', () => {
+      turnSalvarDoUsuario(null);
+      turnUrls.value = ''; tUser.value = ''; tPass.value = '';
+      tInfo.textContent = 'TURN removido — voltou a usar só o padrão do app.';
+    });
+  }
   m.querySelectorAll('#setPanePerfil, #setPaneAudio, #setPaneTema').forEach(b => b.addEventListener('click', e => e.target.closest('[data-themesel]') && themeApply(e.target.closest('[data-themesel]').dataset.themesel)));
   return m;
 }
@@ -3823,6 +3931,23 @@ function bindPeerWake(){
   document.addEventListener('visibilitychange', () => { if(!document.hidden) peerWakeAll(); });
   setInterval(peerWakeAll, 10000);
 }
+// Recarrega a página no máximo 3x a cada 2 min (evita loop quando a rede está muito ruim).
+// Escondido na bandeja não recarrega: espera a pessoa voltar (senão "cai sozinho" sem ela ver).
+function recarregarComGuarda(msg){
+  if(document.hidden) return false;
+  try{
+    const n = +(sessionStorage.getItem('ntg_reloads') || 0), t = +(sessionStorage.getItem('ntg_reload_t') || 0);
+    if(Date.now() - t > 120000) sessionStorage.setItem('ntg_reloads','0');
+    if(+(sessionStorage.getItem('ntg_reloads') || 0) < 3){
+      sessionStorage.setItem('ntg_reloads', String(n + 1));
+      sessionStorage.setItem('ntg_reload_t', String(Date.now()));
+      setStatus(msg || 'Conexão perdida — reconectando...');
+      setTimeout(() => location.reload(), 1200);
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
 function keepPeerRegistered(p){
   bindPeerWake();
   livePeers.add(p);
@@ -3834,6 +3959,10 @@ function keepPeerRegistered(p){
       if(leaving || p.destroyed || !p.disconnected) return;
       try{ p.reconnect(); }catch(e){}
     }, Math.min(400 * fails, 5000));
+    // O servidor pode manter o seu id preso (ex: você caiu e outra pessoa assumiu a sala):
+    // aí o reconnect nunca completa e o app fica "na sala" sem falar com ninguém. Depois de ~8 tentativas
+    // (~40s), recarrega uma vez para entrar de novo do zero.
+    if(fails >= 8) recarregarComGuarda('Sem conexão com o servidor — reconectando a sala...');
   });
   p.on('open', () => { fails = 0; });
   p.on('error', () => {});
@@ -3843,28 +3972,98 @@ function createPeer(id){
   return new Promise((resolve, reject) => {
     loadIceServers().then(() => {
       const p = new Peer(id, { debug: 0, config: { iceServers: ICE_SERVERS } });
-      const t = setTimeout(() => { p.destroy(); reject(new Error('tempo esgotado')); }, 9000);
-      p.once('open', () => { clearTimeout(t); keepPeerRegistered(p); resolve(p); });
-      p.once('error', (e) => { clearTimeout(t); reject(e); });
+      let fim = false, t = null;
+      // IMPORTANTE: em qualquer falha a instância é destruída. Antes ela ficava viva tentando registrar
+      // o mesmo id (dir-<sala>) para sempre — depois de algumas quedas sobravam zumbis disputando a sala.
+      const terminar = (ok, valor) => {
+        if(fim) return; fim = true;
+        clearTimeout(t);
+        if(ok) keepPeerRegistered(valor);
+        else try{ p.destroy(); }catch(e){}
+        ok ? resolve(valor) : reject(valor);
+      };
+      t = setTimeout(() => terminar(false, new Error('tempo esgotado')), 9000);
+      p.once('open', () => terminar(true, p));
+      p.once('error', (e) => terminar(false, e || new Error('falha ao conectar')));
     }).catch(reject);
   });
 }
 
-function connectToDirectory(dirId, tries){
-  return new Promise((resolve) => {
-    const attempt = (n) => {
-      let finished = false, c;
-      const next = () => { if(n > 1) setTimeout(() => attempt(n-1), 1200); else resolve(null); };
-      const fail = () => { if(finished) return; finished = true; clearTimeout(t); peer.off('error', onErr); try{ c && c.close(); }catch(e){} next(); };
-      const onErr = e => { if(e && e.type === 'peer-unavailable' && String(e.message || '').endsWith(dirId)) fail(); };
-      try{ c = peer.connect(dirId, { metadata: { name: myName, photo: myPhoto } }); }catch(e){ return next(); }
-      const t = setTimeout(fail, 12000);       // redes móveis/TURN podem levar vários segundos para negociar
-      peer.on('error', onErr);
-      c.once('open', () => { if(finished) return; finished = true; clearTimeout(t); peer.off('error', onErr); resolve(c); });
-      c.once('error', fail);
+// Por que a última tentativa de entrar na sala falhou:
+//   'livre'       = o broker garantiu que ninguém está com "dir-<sala>" (só aí podemos assumir a sala)
+//   'sem-resposta'= o id existe, mas o canal não abriu (anfitrião ocupado, NAT, rede lenta)
+//   'sinalizacao' = o nosso próprio peer caiu/foi destruído
+let ultimaFalhaDir = '';
+
+// Uma sala pode ficar PRESA no servidor de sinalização: o id "dir-<sala>" continua registrado, mas
+// ninguém responde (app fechado à força, PC dormindo, conexão velha que o servidor não soltou).
+// Nesse caso entrar na sala ficava impossível para sempre — e salas novas funcionavam normalmente.
+// Solução: a sala tem "gerações" (dir-<sala>, dir-<sala>-2, dir-<sala>-3). Todo mundo procura na mesma
+// ordem: entra na primeira que tiver anfitrião de verdade; se nenhuma responder, assume a primeira livre.
+const SALA_GERACOES = 3;
+function salaIds(id){
+  const base = 'dir-' + (id || roomId || '');
+  const ids = [base];
+  for(let g = 2; g <= SALA_GERACOES; g++) ids.push(base + '-' + g);
+  return ids;
+}
+// Liga em vários ids ao mesmo tempo e diz, para cada um: tem anfitrião (conn), está livre, ou não respondeu.
+function salaSondar(p, ids, limiteMs, meta){
+  const espera = Number(limiteMs) > 0 ? Number(limiteMs) : 6000;
+  const dados = meta || { name: myName, photo: myPhoto };
+  return Promise.all((ids || []).map(id => new Promise(resolve => {
+    if(!p || p.destroyed) return resolve({ id, silencio: true });
+    let c = null, t = null, fim = false;
+    const fechar = v => {
+      if(fim) return; fim = true;
+      clearTimeout(t); try{ p.off('error', onErr); }catch(e){}
+      if(!v.conn && c) try{ c.close(); }catch(e){}
+      resolve(v);
     };
-    attempt(tries);
-  });
+    // Só "peer-unavailable" prova que ninguém está com esse id.
+    const onErr = e => { if(e && e.type === 'peer-unavailable' && String(e.message || '').endsWith(id)) fechar({ id, livre: true }); };
+    try{ c = p.connect(id, { metadata: dados, reliable: true }); }
+    catch(e){ return fechar({ id, silencio: true }); }
+    t = setTimeout(() => fechar({ id, silencio: true }), espera);
+    p.on('error', onErr);
+    c.once('open', () => fechar({ id, conn: c }));
+    c.once('error', () => fechar({ id, silencio: true }));
+  })));
+}
+// Procura o anfitrião nas gerações seguintes (a primeira já foi tentada) e devolve quais ids estão livres.
+async function salaProcurarGeracoes(ids){
+  const res = await salaSondar(peer, ids, RECUPERA_TENTATIVA_MS);
+  const vivo = res.find(x => x.conn);
+  return { conn: vivo ? vivo.conn : null, id: vivo ? vivo.id : '', livres: res.filter(x => x.livre).map(x => x.id) };
+}
+// A mesma sala pode aparecer com dois endereços (listas de servidores sincronizadas em momentos
+// diferentes): quem clica no endereço antigo abria uma sala nova e ficava sozinho nela enquanto o
+// pessoal estava na outra. Se a sala "irmã" (mesmo nome) tiver anfitrião, entra nela.
+async function salaIrmaComDono(){
+  try{
+    const lista = Array.isArray(PRESET_ROOMS) ? PRESET_ROOMS : [];
+    const meu = lista.find(r => r.id === roomId);
+    const nome = String((meu && meu.name) || '').trim().toLowerCase();
+    if(!nome) return null;
+    const irmaos = lista.filter(r => r.id !== roomId && String(r.name || '').trim().toLowerCase() === nome).map(r => 'dir-' + r.id);
+    if(!irmaos.length) return null;
+    const res = await salaSondar(peer, irmaos, 4000);
+    const vivo = res.find(x => x.conn);
+    return vivo ? vivo.conn : null;
+  }catch(e){ return null; }
+}
+// Se o id da sala está preso por uma instância NOSSA (entrada anterior que não foi desligada direito),
+// o servidor considera a sala ocupada e ninguém consegue entrar nem assumir. Antes de desistir, solta.
+function soltarIdPreso(id){
+  if(!id) return;
+  const atuais = new Set([peer, dirPeer].filter(Boolean));
+  livePeers.forEach(p => { if(p && p.id === id && !atuais.has(p)){ try{ p.destroy(); }catch(e){} } });
+}
+function soltarIdsDaSala(){
+  if(!roomId) return;
+  const ids = new Set(salaIds(roomId));
+  const atuais = new Set([peer, dirPeer].filter(Boolean));
+  livePeers.forEach(p => { if(p && ids.has(p.id) && !atuais.has(p)){ try{ p.destroy(); }catch(e){} } });
 }
 
 const mutedPeers = new Set();
@@ -4648,7 +4847,12 @@ renderMusicPanel();
 function stageLiveSync(){
   const st = $('stage'); if(!st) return;
   const aoVivo = [...st.querySelectorAll('.stile')].some(t => {
-    if(t.classList.contains('off')) return false;
+    if(t.classList.contains('off')){
+      // pedido de "ver tela" em andamento: mantém o palco aberto mostrando "Conectando à transmissão…"
+      // (antes o quadro ficava PRETO e sem mensagem, porque o aviso só aparece com a classe .off)
+      const m = /^stage-(.+)-screen$/.exec(t.id);
+      return !!(m && screenWatchReq.has(m[1]));
+    }
     if(t.id.endsWith('-cam')) return true;                       // câmera: sempre vira palco vivo
     if(t.id === 'stage-' + myId + '-screen') return selfPreviewOn;   // prévia da minha própria tela
     return true;                                                  // transmissão de outra pessoa conectada de verdade
@@ -4669,18 +4873,94 @@ function watchClick(id){
   }catch(e){}
 }
 function screenWatchStart(id){                       // pedir para assistir a transmissão de alguém
+  if(id === myId) return;
   const t = stageTile(id, 'screen'); if(!t) return;
   hiddenScreens.delete(id);
+  // Marca como .off (quadro compacto com a mensagem) enquanto o vídeo não chega. Sem isso o quadro ficava
+  // PRETO, sem nenhuma explicação — parecia que a transmissão tinha travado.
+  t.classList.add('off');
   const om = t.querySelector('.offMsg'); if(om) om.textContent = 'Conectando à transmissão…';
-  try{ ctlSend(id, { type:'screen-watch', on:true }); }catch(e){}
+  screenWatchPedir(id);
+  stageLiveSync();
   try{ renderStagePanel(); }catch(e){}
-  setTimeout(() => {
-    if(t.isConnected && t.classList.contains('off') && !hiddenScreens.has(id)){
+}
+// O pedido viaja num canal de controle que pode estar recém-aberto (ou ter caído): antes era UM pedido e,
+// se o vídeo não chegasse em 8s, desistia — ficava "não foi possível conectar" para sempre. Agora insiste.
+function screenWatchPedir(id){
+  const agora = Date.now();
+  const req = screenWatchReq.get(id) || { desde: agora, timer: 0 };
+  screenWatchReq.set(id, req);
+  if(req.timer){ clearTimeout(req.timer); req.timer = 0; }
+  try{ ctlSend(id, { type:'screen-watch', on:true }); }catch(e){}
+  req.timer = setTimeout(() => {
+    req.timer = 0;
+    // O vídeo chegou (attachMedia cancela o pedido) ou o usuário parou/saiu: não insiste mais.
+    if(screenWatchReq.get(id) !== req) return;
+    if(leaving || hiddenScreens.has(id)){ screenWatchParar(id); return; }
+    if(Date.now() - req.desde > SCREEN_PEDIDO_MAX_MS){
+      screenWatchParar(id);
       hiddenScreens.add(id);
-      if(om) om.textContent = 'Não foi possível conectar. Tente de novo.';
+      const t = $('stage-'+id+'-screen');
+      const om = t && t.querySelector('.offMsg');
+      if(om) om.textContent = 'Não foi possível conectar a transmissão. Clique em 👁️ para tentar de novo.';
+      try{ stageLiveSync(); }catch(e){}
       try{ renderStagePanel(); }catch(e){}
+      return;
     }
-  }, 8000);                                          // se o vídeo não chegar em 8s, volta pra cartões
+    screenWatchPedir(id);
+  }, SCREEN_PEDIDO_MS);
+}
+function screenWatchParar(id){
+  const req = screenWatchReq.get(id);
+  if(req && req.timer){ clearTimeout(req.timer); req.timer = 0; }
+  screenWatchReq.delete(id);
+  screenImgParar(id);
+}
+function screenWatchPararTodas(){
+  screenWatchReq.forEach(req => { if(req && req.timer) clearTimeout(req.timer); });
+  screenWatchReq.clear();
+  screenImgChk.forEach(s => { if(s && s.timer) clearTimeout(s.timer); });
+  screenImgChk.clear();
+}
+// O canal abre, mas pode abrir SEM imagem (negociação trocada, chave de vídeo perdida na rede): aí o quadro
+// fica preto para sempre. Isto vigia o primeiro quadro e, se não chegar, fecha e pede a transmissão de novo.
+function screenImgParar(id){
+  const s = screenImgChk.get(id);
+  if(s && s.timer) clearTimeout(s.timer);
+  screenImgChk.delete(id);
+}
+function screenImgVigiar(id){
+  if(id === myId) return;
+  screenImgParar(id);
+  const s = { timer: 0, tentativas: 0 };
+  screenImgChk.set(id, s);
+  const checar = () => {
+    s.timer = 0;
+    if(screenImgChk.get(id) !== s) return;
+    const t = $('stage-'+id+'-screen');
+    const v = t && t.querySelector('video');
+    if(!t || !v || hiddenScreens.has(id) || leaving || v.videoWidth > 0){ screenImgParar(id); return; }  // imagem chegou (ou saiu)
+    s.tentativas++;
+    const om = t.querySelector('.offMsg');
+    if(s.tentativas <= 2){
+      const c = incoming.get(id+'|screen');
+      if(c){ try{ c.close(); }catch(e){} incoming.delete(id+'|screen'); }   // fecha o canal sem imagem e pede de novo
+      t.classList.add('off');
+      if(om) om.textContent = 'Sem imagem da transmissão — tentando de novo (' + s.tentativas + '/2)…';
+      screenWatchPedir(id);
+      stageLiveSync();
+      try{ renderStagePanel(); }catch(e){}
+      s.timer = setTimeout(checar, 8000);
+      return;
+    }
+    screenImgParar(id);
+    hiddenScreens.add(id);
+    t.classList.add('off');
+    if(om) om.textContent = 'A transmissão não está chegando com imagem. Peça para parar e iniciar de novo.';
+    try{ stageLiveSync(); }catch(e){}
+    try{ renderStagePanel(); }catch(e){}
+  };
+  s.timer = setTimeout(checar, 6000);
 }
 function stageTile(id, kind){
   const tileId = 'stage-'+id+'-'+kind;
@@ -4732,6 +5012,7 @@ function stageTile(id, kind){
     if(watchBtn) watchBtn.onclick = () => {
       if(!hiddenScreens.has(id)){
         // PARAR de assistir: fecha a chamada (o transmissor para de enviar para você)
+        screenWatchParar(id);
         hiddenScreens.add(id);
         t.classList.add('off'); watchBtn.classList.add('active'); watchBtn.title = 'Assistir transmissão';
         offMsg.textContent = OFF_MSG;
@@ -4768,6 +5049,7 @@ document.addEventListener('fullscreenchange', () => {
 });
 function removeStageTile(id, kind){
   const t = $('stage-'+id+'-'+kind); if(t) t.remove();
+  if(kind === 'screen') screenImgParar(id);
   stageLiveSync();
   try{ renderStagePanel(); }catch(e){}
 }
@@ -4794,6 +5076,7 @@ function attachMedia(id, kind, stream){
   if(videoTracks.length){
     const tile = stageTile(id, kind);
     if(kind === 'screen'){
+      screenWatchParar(id);                 // o vídeo chegou: para de pedir
       tile.classList.remove('off');
       const wb = tile.querySelector('.watchBtn');
       if(wb){ wb.classList.remove('active'); wb.title = 'Parar de assistir'; }
@@ -4805,6 +5088,7 @@ function attachMedia(id, kind, stream){
     const el = tile.querySelector('video');
     el.srcObject = new MediaStream(videoTracks);
     el.play().catch(() => {});
+    if(kind === 'screen') screenImgVigiar(id);     // quadro abriu: confere se a imagem chega de verdade
   }
   if(id !== myId){
     playAudioStream(kind+'-'+id, stream.getAudioTracks());
@@ -4825,6 +5109,10 @@ const incoming = new Map();        // 'peerId|kind' -> chamada recebida
 const screenVolumes = new Map();   // (espectador) volume 0–100 da transmissão de cada pessoa
 function screenVol(id){ return (screenVolumes.has(id) ? screenVolumes.get(id) : 100) / 100; }
 const hiddenScreens = new Set();   // (espectador) transmissores cuja tela eu ainda não estou assistindo
+const screenWatchReq = new Map();  // (espectador) peerId -> { desde, timer } do pedido "ver tela" em andamento
+const screenImgChk = new Map();    // (espectador) peerId -> { timer, tentativas }: o quadro abriu mas não veio imagem
+const SCREEN_PEDIDO_MS = 3000;      // pede de novo enquanto o vídeo não chega (o canal pode estar abrindo)
+const SCREEN_PEDIDO_MAX_MS = 30000; // desiste depois de 30s e mostra o aviso para tentar de novo
 const screenWatchers = new Set();  // (transmissor) espectadores que pediram para assistir minha tela
 const ctlOut = new Map();          // canal de controle que EU abri -> peerId
 const ctlIn = new Map();           // canal de controle que o OUTRO abriu -> peerId
@@ -4843,13 +5131,23 @@ function ctlSend(id, msg){
   const c = ctlGet(id);
   if(c.open) c.send(msg); else c.once('open', () => c.send(msg));
 }
+// (transmissor) manda a tela para quem pediu para assistir. Antes exigia que a pessoa já estivesse em
+// knownPeers — quem tinha acabado de entrar (roster ainda sincronizando) pedia e não recebia nada.
+function screenWatchAtender(id){
+  if(!localScreen || !id || id === myId || leaving) return;
+  const atual = (outgoing.get(id) || {}).screen;
+  const pc = atual && atual.peerConnection;
+  const st = pc && pc.iceConnectionState;
+  if(atual && atual.open && (st === 'connected' || st === 'completed')) return;   // já está vendo: não interrompe
+  placeCall(id, 'screen', localScreen);
+}
 function handleCtlData(from, d){
   if(!d) return;
   if(typeof d.type === 'string' && d.type.indexOf('chat') === 0){ chatIncoming(from, d); return; }
   if(d.type === 'screen-watch'){
     if(d.on){
       screenWatchers.add(from);
-      if(localScreen && knownPeers.has(from)){ placeCall(from, 'screen', localScreen); ctlSend(from, { type:'screen-leak', on: screenLeakNow() }); }
+      if(localScreen){ screenWatchAtender(from); ctlSend(from, { type:'screen-leak', on: screenLeakNow() }); }
     } else {
       screenWatchers.delete(from);
       const o = outgoing.get(from);
@@ -4871,12 +5169,18 @@ function handleCtlData(from, d){
     stageLiveSync();
     try{ renderStagePanel(); }catch(e){}       // o cartão dele ganha o botão "ver tela"
   } else if(d.type === 'screen-stopped'){
+    screenWatchParar(from);
     hiddenScreens.delete(from); screenLeak.delete(from); screenNoLeak.delete(from); musicLocalForce.delete(from);
     removeStageTile(from, 'screen');
     const a = $('audio-screen-'+from); if(a) a.remove();
     refreshAudioMutes();
   } else if(d.type === 're-call'){
     // o outro lado perdeu o áudio/vídeo: quem tem o stream disca de novo (o TURN/ICE trocou de rota)
+    if(d.kind === 'screen'){
+      // a tela só vai para quem pediu para assistir (nunca de graça, para não gastar upload)
+      if(screenWatchers.has(from)) screenWatchAtender(from);
+      return;
+    }
     const kind = d.kind === 'cam' ? 'cam' : 'mic';
     const stream = kind === 'cam' ? localCam : localMic;
     if(!stream || !knownPeers.has(from)) return;
@@ -5026,11 +5330,14 @@ const lastRecall = new Map();
 function tentarRefazerChamada(id, kind){
   if(leaving || !joinedRoom || !inRoom) return;
   const call = (outgoing.get(id) || {})[kind];
-  if(!call || !call.open) return;                       // nem abriu: o healNow cuida
+  if(!call) return;                                     // canal nem criado: connectMedia/healNow cuida
   const pc = call.peerConnection;
   const st = pc && pc.iceConnectionState;
-  if(st === 'connected' || st === 'completed') return;
-  const stream = kind === 'cam' ? localCam : localMic;
+  // "call.open" falso NÃO impede refazer: era exatamente o caso de quem fica mudo para sempre
+  // (a chamada nunca abre e ninguém tenta de novo).
+  if(call.open && (st === 'connected' || st === 'completed')) return;
+  // a tela vem de localScreen (antes caía em localMic e a transmissão nunca voltava)
+  const stream = kind === 'screen' ? localScreen : (kind === 'cam' ? localCam : localMic);
   if(!stream || !stream.getTracks().some(t => t.readyState === 'live')) return;
   const chave = id + '|' + kind;
   if(Date.now() - (lastPlaced.get(chave) || 0) < 6000) return;
@@ -5150,6 +5457,7 @@ function teardownPeerConns(id){
   ['audio-'+id, 'audio-screen-'+id, 'audio-cam-'+id].forEach(aid => { const a = $(aid); if(a) a.remove(); });
   chatPeerGone(id);
   knownPeers.delete(id); knownPhotos.delete(id); mutedPeers.delete(id); peerVolumes.delete(id); stopPeerSpeakingMonitor(id);
+  screenWatchParar(id);
   hiddenScreens.delete(id); screenWatchers.delete(id); peerStates.delete(id); screenLeak.delete(id); screenNoLeak.delete(id); musicLocalForce.delete(id); screenVolumes.delete(id);
   ['screen','cam','mic'].forEach(k => incoming.delete(id+'|'+k));
   [ctlOut, ctlIn].forEach(m => { const c = m.get(id); if(c){ try{ c.close(); }catch(e){} m.delete(id); } });
@@ -5230,22 +5538,31 @@ function directoryDropPeer(id, conn){
   setStatus(countInRoom() + ' na sala', true);
   playNotifySound('leave');
 }
+// ---- prazos de presença (alguém sumiu sem sair: internet caiu, PC desligou, aba fechou) ----
+const DIR_CHECK_MS = 3000;            // de quanto em quanto o anfitrião confere os participantes
+const DIR_SILENCIO_MS = 15000;        // participante sem NENHUM sinal de vida por 15s = fantasma
+const DIR_FECHAMENTO_MS = 2000;       // espera antes de anunciar a saída quando o canal fecha
+const HOST_SILENCIO_MS = 12000;       // anfitrião sem responder aos pings por 12s = sumiu
+const RECUPERA_TENTATIVA_MS = 6000;   // tempo de cada tentativa de reconectar ao anfitrião (negociar o canal leva 2-5s)
+const RECUPERA_JANELA_MS = 25000;     // por quanto tempo insiste antes de sossegar e tentar de novo no ciclo
+// true quando o último sinal de vida é velho demais (sem sinal nenhum = ainda não é fantasma)
+function silenciosoHa(ultimo, agora, limite){ return agora - (Number(ultimo) || agora) > limite; }
 // Servidor de entrada da sala: roda no anfitrião original OU em quem assumir quando ele sair
 function startDirectoryServer(p){
   if(!directoryWatchdogStarted){
     directoryWatchdogStarted = true;
-    // a cada 4s, derruba quem não dá sinal de vida há mais de 25s (ex: fechou o navegador/aba ou desligou o PC sem avisar).
-    // 25s (antes 13s) dá folga para queda rápida de rede/aba em segundo plano: ninguém é expulso por um tropeço.
+    // derruba quem não dá sinal de vida há mais de 15s (fechou a aba, desligou o PC, perdeu a internet).
+    // 15s = 5 pings perdidos: dá folga para um tropeço de rede sem deixar fantasma na sala por meia hora.
     setInterval(() => {
       if(!isDirectory) return;
       const now = Date.now();
       conns.forEach((c, id) => {
-        if(now - (connSeen.get(id) || now) > 25000){
+        if(silenciosoHa(connSeen.get(id), now, DIR_SILENCIO_MS)){
           try{ c.close(); }catch(e){}
           directoryDropPeer(id, c);
         }
       });
-    }, 4000);
+    }, DIR_CHECK_MS);
   }
   p.on('connection', conn => {
     if(conn.metadata && conn.metadata.role === 'ctl') return;
@@ -5294,13 +5611,13 @@ function startDirectoryServer(p){
         renderPeopleList();
       }
     });
-    // Queda rápida de rede/aba em segundo plano: espera 3 s para a pessoa reconectar antes de anunciar que saiu.
+    // Queda rápida de rede/aba em segundo plano: espera 2 s para a pessoa reconectar antes de anunciar que saiu.
     // Se ela voltar por outra conexão, conns.get(id) já não é esta e nada é anunciado.
     conn.on('close', () => {
       setTimeout(() => {
         if(leaving || conns.get(conn.peer) !== conn) return;
         dropPeer(conn.peer);
-      }, 3000);
+      }, DIR_FECHAMENTO_MS);
     });
   });
 }
@@ -5320,9 +5637,14 @@ function onDirectoryLost(c){
   if(dirOwnerId && dirOwnerId !== myId){ teardownPeerConns(dirOwnerId); renderPeopleList(); }  // quem hospedava saiu
   recoverDirectory();
 }
-function tryConnectDirectory(dirId){
+function tryConnectDirectory(dirId, limiteMs){
+  const espera = Number(limiteMs) > 0 ? Number(limiteMs) : 2500;
+  ultimaFalhaDir = '';
   return new Promise(resolve => {
-    const c = peer.connect(dirId, { metadata: { name: myName, photo: myPhoto } });
+    if(!peer || peer.destroyed){ ultimaFalhaDir = 'sinalizacao'; return resolve(null); }
+    let c = null, t = null;
+    try{ c = peer.connect(dirId, { metadata: { name: myName, photo: myPhoto }, reliable: true }); }
+    catch(e){ ultimaFalhaDir = 'sinalizacao'; return resolve(null); }
     let done = false;
     const fin = v => {
       if(done) return; done = true;
@@ -5330,20 +5652,33 @@ function tryConnectDirectory(dirId){
       if(!v) try{ c.close(); }catch(e){}
       resolve(v);
     };
-    const onErr = e => { if(e && e.type === 'peer-unavailable' && String(e.message || '').endsWith(dirId)) fin(null); };
-    const t = setTimeout(() => fin(null), 2500);
+    // Só "peer-unavailable" prova que ninguém está com o id — é o único caso em que podemos assumir a sala.
+    const onErr = e => { if(e && e.type === 'peer-unavailable' && String(e.message || '').endsWith(dirId)){ ultimaFalhaDir = 'livre'; fin(null); } };
+    t = setTimeout(() => { if(!ultimaFalhaDir) ultimaFalhaDir = 'sem-resposta'; fin(null); }, espera);
     peer.on('error', onErr);
     c.once('open', () => fin(c));
-    c.once('error', () => fin(null));
+    c.once('error', () => { if(!ultimaFalhaDir) ultimaFalhaDir = 'sem-resposta'; fin(null); });
   });
 }
-async function claimDirectory(dirId){
+async function claimDirectory(dirId, comoAnfitriao){
+  if(leaving || isDirectory) return false;
+  soltarIdPreso(dirId);          // id preso por uma instância nossa (entrada anterior) não pode nos barrar
   try{
     const p = await createPeer(dirId);
+    if(leaving){ try{ p.destroy(); }catch(e){} return false; }
     dirPeer = p; isDirectory = true; dirOwnerId = myId;
     startDirectoryServer(p);
-    setStatus('Você assumiu a sala. ' + countInRoom() + ' na sala', true);
-    setTimeout(pruneStaleMembers, 12000);
+    joinedRoom = true;
+    knownPeers.set(myId, myName);
+    try{ renderPeopleList(); }catch(e){}
+    if(comoAnfitriao){
+      setStatus('Sala criada. Aguardando participantes...', true);
+      avisoSemMic();
+      startCallTimer();
+    } else {
+      setStatus('Você assumiu a sala. ' + countInRoom() + ' na sala', true);
+    }
+    setTimeout(pruneStaleMembers, 15000);
     return true;
   }catch(e){ return false; }
 }
@@ -5352,27 +5687,73 @@ function pruneStaleMembers(){
   [...knownPeers.keys()].forEach(id => { if(id !== myId && !conns.has(id)) directoryDropPeer(id); });
 }
 let lastRecoverEnd = 0;
-async function recoverDirectory(){
-  if(leaving || recovering) return;
+let recuperaCiclos = 0;   // janelas seguidas sem ninguém responder: depois de 3, aceita assumir mesmo sem "livre"
+// Assumir a sala é a última saída: só quando o broker garante que o id está livre, ou depois de 3 janelas
+// sem NENHUMA resposta (anfitrião zumbi que nunca libera o id). Tomar o id de uma sala que já tem anfitrião
+// era o que deixava a sala "reorganizando" para sempre.
+function podeAssumirSala(){ return ultimaFalhaDir === 'livre' || recuperaCiclos >= 3; }
+async function recoverDirectory(aviso){
+  if(leaving || recovering || isDirectory) return;
   recovering = true;
-  const dirId = 'dir-' + roomId;
-  setStatus('O anfitrião saiu — reorganizando a sala...', true);
-  // todos calculam a mesma ordem; o primeiro assume a sala, os demais só reconectam
-  const rank = [myId, ...knownPeers.keys()].filter(id => id !== dirId).sort().indexOf(myId);
-  for(let i = 0; i < 30 && !leaving; i++){
-    const c = await tryConnectDirectory(dirId);
+  const ids = salaIds(roomId);
+  const dirId = ids[0];
+  setStatus(aviso || 'O anfitrião saiu — reorganizando a sala...', true);
+  // Antes cada um esperava a sua "vez" na fila (até 30 tentativas de 2,5s + 0,7s de espera): dava 30-60s de sala travada.
+  // Agora todo mundo tenta ao mesmo tempo: quem conectar, entra; quem ouvir "ninguém com esse id", TENTA ASSUMIR.
+  // O servidor só aceita um dono por id, então os outros caem no connect e entram normalmente.
+  const fim = Date.now() + RECUPERA_JANELA_MS;
+  let ultimaTentativa = 0, tentativas = 0, olhouGeracoes = false;
+  while(!leaving && !isDirectory && Date.now() < fim){
+    const c = await tryConnectDirectory(dirId, RECUPERA_TENTATIVA_MS);
     if(c){
       adoptDirectory(c, true);
-      recovering = false;
+      recovering = false; recuperaCiclos = 0;
       renderPeopleList();
       setStatus('Conectado', true);
       return;
     }
-    if(i >= rank && await claimDirectory(dirId)){ recovering = false; return; }
-    await new Promise(r => setTimeout(r, 700));
+    // O id principal está OCUPADO mas ninguém responde: pode ser o id preso de uma saída forçada
+    // (o servidor não soltou o nome). Antes o app ficava nesse "Entrando na sala..." para sempre.
+    // A partir da segunda janela, procura o anfitrião nas gerações seguintes e assume a primeira livre.
+    if(ultimaFalhaDir === 'sem-resposta' && recuperaCiclos >= 1 && !olhouGeracoes){
+      olhouGeracoes = true;
+      setStatus('A sala está presa numa conexão antiga — procurando uma sala livre com o mesmo nome...', true);
+      const irma = await salaIrmaComDono();   // a mesma sala pode estar com outro endereço (lista sincronizada depois)
+      if(leaving || isDirectory){ recovering = false; return; }
+      if(irma){
+        adoptDirectory(irma, true);
+        recovering = false; recuperaCiclos = 0;
+        renderPeopleList();
+        setStatus('Conectado', true);
+        return;
+      }
+      const alt = await salaProcurarGeracoes(ids.slice(1));
+      if(leaving || isDirectory){ recovering = false; return; }
+      if(alt.conn){
+        adoptDirectory(alt.conn, true);
+        recovering = false; recuperaCiclos = 0;
+        renderPeopleList();
+        setStatus('Conectado', true);
+        return;
+      }
+      for(const id of alt.livres){
+        if(await claimDirectory(id)){ recovering = false; recuperaCiclos = 0; return; }
+      }
+      olhouGeracoes = false;     // nada livre nesta volta: tenta de novo na próxima
+    }
+    // Assumir a sala só quando o broker DIZ que o id está livre ("peer-unavailable"). Antes ele tentava
+    // assumir a cada 6s mesmo com o anfitrião lá dentro: o createPeer falhava, o id ficava disputado e a
+    // sala passava a eternidade em "reorganizando" sem nunca abrir o canal com quem já estava dentro.
+    if(podeAssumirSala() && tentativas < 6 && Date.now() - ultimaTentativa >= 2000){
+      ultimaTentativa = Date.now(); tentativas++;
+      if(await claimDirectory(dirId)){ recovering = false; recuperaCiclos = 0; return; }
+      await new Promise(r => setTimeout(r, 400));   // perdeu a corrida: alguém assumiu, volta a tentar conectar
+      continue;
+    }
+    await new Promise(r => setTimeout(r, 300));
   }
-  recovering = false; lastRecoverEnd = Date.now();
-  if(!leaving) setStatus('Sem conexão com a sala — tentando reconectar automaticamente...');
+  recovering = false; lastRecoverEnd = Date.now(); recuperaCiclos++;
+  if(!leaving && !isDirectory) setStatus('Entrando na sala — o anfitrião ainda não respondeu; tentando de novo...', true);
 }
 
 function wirePeerHandlers(){
@@ -5386,7 +5767,17 @@ function wirePeerHandlers(){
     incoming.set(key, call);
     call.answer(undefined, kind === 'mic' ? { sdpTransform: sdpOpusVoice } : (kind === 'screen' ? { sdpTransform: sdpOpusMusic } : undefined));
     watchCallIce(call.peer, kind, call, 'in');
-    call.on('stream', stream => attachMedia(call.peer, kind, stream));
+    // Quem RECEBE também vigia: se a chamada nunca conectar, pede para o outro lado refazer.
+    // Antes só quem chamava tentava de novo — e as duas pontas ficavam mudas para sempre.
+    let tChk = setTimeout(function checar(){
+      if(incoming.get(key) !== call || leaving) return;
+      const pc0 = call.peerConnection;
+      const st0 = pc0 && pc0.iceConnectionState;
+      if(st0 === 'connected' || st0 === 'completed') return;
+      tentarPedirRecarga(call.peer, kind);
+      tChk = setTimeout(checar, 8000);
+    }, 9000);
+    call.on('stream', stream => { clearTimeout(tChk); attachMedia(call.peer, kind, stream); });
     call.on('close', () => {
       if(incoming.get(key) !== call) return;          // chamada já substituída por outra
       incoming.delete(key);
@@ -6143,23 +6534,14 @@ function healNow(){
   if(leaving || !peer || !joinedRoom) return;
   if(peer.destroyed){
     // conexão com o servidor morreu de vez: recarrega a página (guarda contra loop de reloads).
-    // Escondido na bandeja não recarrega: espera a pessoa voltar (senão "cai sozinho" sem ela ver).
-    if(document.hidden) return;
-    try{
-      const n = +(sessionStorage.getItem('ntg_reloads') || 0), t = +(sessionStorage.getItem('ntg_reload_t') || 0);
-      if(Date.now() - t > 120000){ sessionStorage.setItem('ntg_reloads','0'); }
-      if(+(sessionStorage.getItem('ntg_reloads') || 0) < 3){
-        sessionStorage.setItem('ntg_reloads', String(n + 1)); sessionStorage.setItem('ntg_reload_t', String(Date.now()));
-        setStatus('Conexão perdida — reconectando...'); setTimeout(() => location.reload(), 1200);
-      }
-    }catch(e){}
+    recarregarComGuarda('Conexão perdida — reconectando...');
     return;
   }
   if(peer.disconnected) return;                     // o keepPeerRegistered já está religando
-  // 1) perdeu o anfitrião e não está recuperando? tenta de novo (a cada 10 s)
-  if(!isDirectory && !dirConn && !recovering && Date.now() - lastRecoverEnd > 10000) recoverDirectory();
-  // 1b) o anfitrião sumiu (fechou o navegador) sem o evento 'close' disparar? trata como perdido na marra
-  if(!isDirectory && dirConn && Date.now() - lastDirSeen > 25000){ const c = dirConn; try{ c.close(); }catch(e){} onDirectoryLost(c); }
+  // 1) perdeu o anfitrião e não está recuperando? tenta de novo (a cada 5 s)
+  if(!isDirectory && !dirConn && !recovering && Date.now() - lastRecoverEnd > 5000) recoverDirectory();
+  // 1b) o anfitrião sumiu (fechou o navegador/desligou o PC) sem o evento 'close' disparar? trata como perdido na marra
+  if(!isDirectory && dirConn && silenciosoHa(lastDirSeen, Date.now(), HOST_SILENCIO_MS)){ const c = dirConn; try{ c.close(); }catch(e){} onDirectoryLost(c); }
   // 1c) avisa o anfitrião que ainda está na sala (senão o watchdog dele te tira por inatividade)
   if(!isDirectory && dirConn && dirConn.open) try{ dirConn.send({ type:'ping' }); }catch(e){}
   // 2) refaz chamadas de voz/câmera que caíram
@@ -6183,8 +6565,16 @@ function startHealer(){
 }
 
 async function startCall(){
+  const seq = ++joinSeq;           // cada entrada tem a sua "geração": uma entrada antiga não pode mexer na nova
   leaving = false;                 // entrar de novo na mesma página (voltar do cache, reconectar) não pode herdar o "saí da sala"
-  recovering = false; pruneOnRoster = false;
+  recovering = false; pruneOnRoster = false; recuperaCiclos = 0; ultimaFalhaDir = '';
+  const desistiu = () => seq !== joinSeq || leaving;
+  // Entrada nova não pode conviver com uma instância antiga ainda segurando "dir-<sala>": era isso que
+  // deixava a sala "ocupada por ninguém" e impossível de entrar até reiniciar o app.
+  try{ if(peer) peer.destroy(); }catch(e){}
+  try{ if(dirPeer) dirPeer.destroy(); }catch(e){}
+  peer = null; dirPeer = null;
+  soltarIdsDaSala();
   if(micRetryTimer){ clearTimeout(micRetryTimer); micRetryTimer = null; }
   inRoom = true;
   $('callCard').classList.remove('lobby');
@@ -6201,67 +6591,93 @@ async function startCall(){
     localMic = null;
     console.warn('Microfone indisponível:', e);
     setStatus('Entrando sem áudio — ' + describeMicError(e));
+    try{ botToast('⚠️ Sem microfone: ' + describeMicError(e) + ' Clique no microfone para tentar de novo.'); }catch(_e){}
     scheduleMicRetry();          // tenta reabrir sozinho (aparelho conectado depois / permissão liberada)
   }
+  if(desistiu()) return;         // saiu/entrou em outra sala enquanto o microfone abria
 
   setStatus('Conectando ao servidor de sinalização...');
   await loadIceServers();
-  isDirectory = false;             // começa como participante; vira anfitrião só se o nome "dir-<sala>" estiver livre
-  const dirId = 'dir-' + roomId;
+  if(desistiu()) return;
+  isDirectory = false;             // começa como participante; vira anfitrião só se ninguém estiver na sala
+  // Antes a primeira tentativa era criar a conexão JÁ com o nome "dir-<sala>". Se ela abrisse ali e
+  // depois a entrada falhasse, sobrava uma conexão nossa segurando o nome da sala — e a sala ficava
+  // "ocupada por ninguém", impossível de entrar. Agora a entrada começa sempre como participante.
+  myId = roomId + '-' + Math.random().toString(36).slice(2,8);
   try{
-    peer = await createPeer(dirId);
-    isDirectory = true; myId = dirId;
-  }catch(e){
-    myId = roomId + '-' + Math.random().toString(36).slice(2,8);
-    try{ peer = await createPeer(myId); }
-    catch(e2){ backToLobby('Não consegui conectar ao servidor de sinalização: ' + e2.message); return; }
+    const p = await createPeer(myId);
+    if(desistiu()){ try{ p.destroy(); }catch(e){} return; }
+    peer = p;
   }
-
+  catch(e){ if(!desistiu()) backToLobby('Não consegui conectar ao servidor de sinalização: ' + e.message); return; }
   wirePeerHandlers();
   startHealer();
+  if(desistiu()){ try{ if(peer) peer.destroy(); }catch(e){} peer = null; return; }   // saiu/entrou em outra sala enquanto conectava
 
-  if(isDirectory){
-    becomeHost();
-  } else {
-    setStatus('Entrando na sala...');
-    let c = await connectToDirectory(dirId, 2);
-    if(!c){
-      // o anfitrião pode ter saído sem liberar o nome: tenta assumir a sala
-      setStatus('Sem resposta do anfitrião — tentando assumir a sala...');
-      try{
-        try{ peer.destroy(); }catch(e){}
-        peer = await createPeer(dirId);
-        isDirectory = true; myId = dirId;
-        wirePeerHandlers();
-        becomeHost();
-        return;
-      }catch(e){ /* a sala existe mas não conseguimos falar com ela */ }
-      setStatus('Não consegui conectar — testando a sua rede...');
-      const net = await diagnoseNetwork();
-      backToLobby('Não consegui conectar com quem está na sala. ' + describeNet(net));
+  // 1) O caso normal: a sala já tem anfitrião — entra nele. Sonda o endereço principal e as gerações
+  //    ao mesmo tempo (geração que não existe responde "livre" na hora), então entrar é rápido em qualquer uma.
+  setStatus('Entrando na sala...');
+  const dirId = 'dir-' + roomId;
+  const ids = salaIds(roomId);
+  const sondagem = await salaSondar(peer, ids, 12000);
+  if(desistiu()) return;
+  const achou = sondagem.find(x => x.conn);        // preferência: endereço principal, depois as gerações
+  if(achou){ entrarComoParticipante(achou.conn); return; }
+
+  // 2) O endereço desta sala não respondeu. Antes de abrir uma sala nova, vê se o MESMO nome aparece
+  //    com outro endereço (listas de salas sincronizadas em momentos diferentes): é a sala do pessoal.
+  setStatus('Sala sem resposta — verificando se ela está livre...', true);
+  const irma = await salaIrmaComDono();
+  if(desistiu()) return;
+  if(irma){ entrarComoParticipante(irma); return; }
+
+  // 3) Ninguém com este nome. Vira anfitriã na primeira geração LIVRE (normalmente o endereço principal).
+  //    Se o principal estiver preso (ocupado e mudo, de uma saída forçada), a segunda geração assume —
+  //    antes o app ficava em "Entrando na sala..." para sempre nesse caso.
+  for(const id of sondagem.filter(x => x.livre).map(x => x.id)){
+    if(desistiu()) return;
+    if(id !== ids[0]){
+      // Antes de abrir na geração seguinte, confere se o endereço principal ganhou anfitrião nesse
+      // meio-tempo (alguém pode ter assumido): aí entra com ele, sem dividir o pessoal em duas salas.
+      const agora = await salaSondar(peer, [ids[0]], 3000);
+      const dono = agora.find(x => x.conn);
+      if(dono){ entrarComoParticipante(dono.conn); return; }
+    }
+    if(await claimDirectory(id, true)){
+      if(id !== ids[0]) try{ botToast('🎮 A sala antiga estava presa — abri uma sala nova com o mesmo nome. Chame quem já estava nela.'); }catch(e){}
       return;
     }
-    adoptDirectory(c, false);
-    joinedRoom = true;
-    renderPeopleList();
-    setStatus('Conectado', true);
-    startCallTimer();
   }
-}
-function becomeHost(){
+  // 4) Nada deu certo agora: segue como participante e a recuperação continua tentando (sem travar a tela).
   joinedRoom = true;
-  knownPeers.set(myId, myName);
-  dirOwnerId = myId;
   renderPeopleList();
-  setStatus('Sala criada. Aguardando participantes...', true);
   startCallTimer();
-  startDirectoryServer(peer);
+  recoverDirectory('Entrando na sala — o anfitrião ainda não respondeu; tentando de novo...');
+}
+// Entrei na sala: adota o canal do anfitrião, libera a tela e avisa se estou sem microfone.
+function entrarComoParticipante(conn){
+  adoptDirectory(conn, false);
+  joinedRoom = true;
+  renderPeopleList();
+  setStatus('Conectado', true);
+  avisoSemMic();
+  startCallTimer();
+}
+// Sem microfone o app ficava "conectado" e mudo sem avisar ninguém: o status era sobrescrito logo depois.
+function avisoSemMic(){
+  if(localMic || !inRoom) return false;
+  setStatus('⚠️ Sem microfone — ninguém vai te ouvir. Clique no microfone para tentar de novo.', false);
+  try{ botToast('⚠️ O microfone não abriu. Clique no microfone (canto inferior esquerdo) para tentar de novo.'); }catch(e){}
+  return true;
 }
 // Volta pra lista de salas depois de uma falha, liberando para tentar de novo (inclusive a mesma sala)
 function backToLobby(msg){
+  joinSeq++;                       // nenhuma entrada daqui para trás pode continuar rodando
   joinedRoom = false;
   try{ if(peer) peer.destroy(); }catch(e){}
-  peer = null; isDirectory = false; myId = null; dirOwnerId = null;
+  try{ if(dirPeer) dirPeer.destroy(); }catch(e){}
+  peer = null; dirPeer = null; isDirectory = false; myId = null; dirOwnerId = null;
+  soltarIdsDaSala();
   try{ if(typeof dirConn !== 'undefined') dirConn = null; }catch(e){}
   if(localMic){ nsStop(); localMic = null; }
   knownPeers.clear(); renderPeopleList();
@@ -6506,6 +6922,7 @@ async function screenToggle(){
   lastLeakSent = null;
   setSelfPreview(selfPreviewOn);     // respeita a escolha de mostrar/ocultar a prévia
   knownPeers.forEach((_, id) => { if(id !== myId) ctlSend(id, { type:'screen-started', name: myName }); });   // só avisa; cada pessoa escolhe assistir
+  screenWatchers.forEach(id => { if(id !== myId) screenWatchAtender(id); });   // quem pediu antes de a transmissão começar já recebe
   track.onended = () => $('screenBtn').click();
   $('screenBtn').classList.add('active'); $('screenBtn').innerHTML = CTL_ICO.stop; $('screenBtn').title = 'Parar transmissão';
   $('qualityBox').classList.add('hidden');         // some ao começar a transmitir
@@ -6519,11 +6936,14 @@ $('screenStartBtn').onclick = screenToggle;
 
 function leaveRoom(){
   if(leaving) return;                // evita rodar duas vezes (botão Sair + pagehide) e derrubar quem entra logo depois
+  joinSeq++;                         // invalida uma entrada em andamento (não pode sobrar peer nosso com "dir-<sala>")
   playNotifySound('leave');          // som suave quando VOCÊ sai da sala (antes: só tocava quando outro saía)
   try{ engineHalt(); }catch(e){}
   leaving = true;
+  screenWatchPararTodas();           // nenhum pedido de "ver tela" pode ficar repetindo depois de sair
   stopCallTimer();
   if(dirPeer) try{ dirPeer.destroy(); }catch(e){}
+  soltarIdsDaSala();                 // nenhuma instância nossa pode continuar segurando "dir-<sala>" depois de sair
   if(dirConn && dirConn.open) try{ dirConn.send({ type:'leaving' }); }catch(e){}
   outgoing.forEach(o => Object.values(o).forEach(c => c && c.close()));
   outgoing.clear();
@@ -6557,6 +6977,11 @@ function diagPanelEl(){
       '<div class="dgRows" id="dgNetRows"><div class="dgRow"><span>Testando...</span><b>aguarde</b></div></div>' +
       '<div class="dgHint" id="dgNetHint">Verificando se o WebRTC/UDP e o servidor TURN estão alcançáveis.</div>' +
       '<div class="dgBtns"><button type="button" class="dgBtn" id="dgNetBtn">Testar rede de novo</button></div>' +
+      '<div class="dgBtns"><button type="button" class="dgBtn" id="dgTurnBtn">🔌 Configurar TURN</button></div>' +
+      '<div class="dgLbl">Sala de voz</div>' +
+      '<div class="dgRows" id="dgSalaRows"><div class="dgRow"><span>Toque em "Testar sala"</span><b>—</b></div></div>' +
+      '<div class="dgHint" id="dgSalaHint">Mostra o estado real da voz e da tela com cada pessoa da sala.</div>' +
+      '<div class="dgBtns"><button type="button" class="dgBtn" id="dgSalaBtn">Testar sala</button></div>' +
     '</div>';
   document.body.appendChild(d);
   d.addEventListener('click', e => {
@@ -6564,6 +6989,8 @@ function diagPanelEl(){
     if(e.target.closest('#dgMicBtn')){ DG.testando ? diagMicStop() : diagMicStart(); return; }
     if(e.target.closest('#dgMicSet')){ diagClose(); openSettings('audio'); return; }
     if(e.target.closest('#dgNetBtn')) diagRedeTestar();
+    if(e.target.closest('#dgTurnBtn')){ diagClose(); openSettings('audio'); }
+    if(e.target.closest('#dgSalaBtn')) diagSalaTestar();
   });
   DG.el = d;
   return d;
@@ -6660,11 +7087,64 @@ async function diagRedeTestar(){
     return;
   }
   const clamp = n => Math.max(0, Math.round(n));
+  const meuTurn = turnDoUsuario();
   rows.innerHTML =
     '<div class="dgRow"><span>WebRTC / UDP</span><b class="' + (d.host ? 'dgOk' : 'dgBad') + '">' + (d.host ? 'liberado' : 'bloqueado') + '</b></div>' +
     '<div class="dgRow"><span>Endereços públicos (NAT)</span><b class="' + (d.srflx === 0 ? 'dgBad' : d.srflx > 1 ? 'dgWarn' : 'dgOk') + '">' + d.srflx + (d.srflx > 1 ? ' · NAT restrito/CGNAT' : '') + '</b></div>' +
-    '<div class="dgRow"><span>Servidor TURN</span><b class="' + (d.relay ? 'dgOk' : 'dgWarn') + '">' + (d.relay ? 'respondeu' : 'não respondeu') + '</b></div>';
+    '<div class="dgRow"><span>Servidor TURN' + (meuTurn ? ' (o seu)' : '') + '</span><b class="' + (d.relay ? 'dgOk' : 'dgWarn') + '">' + (d.relay ? 'respondeu' : 'não respondeu') + '</b></div>';
   hint.textContent = describeNet(d);
+}
+// "Testar sala": mostra o estado real (ICE) de cada canal de voz/tela com cada pessoa.
+// Serve para saber se o problema é a rede entre vocês (failed/sem canal) ou o microfone local.
+function diagSalaStatus(c){
+  if(!c) return 'sem canal';
+  const pc = c.peerConnection;
+  const ice = pc && pc.iceConnectionState;
+  if(ice === 'connected' || ice === 'completed') return 'ok';
+  if(ice) return ice;                                  // failed / disconnected / checking / new
+  return c.open ? 'aberto' : 'abrindo';
+}
+async function diagSalaBytes(pc){
+  if(!pc || !pc.getStats) return null;
+  try{
+    let rx = 0, achou = false;
+    const st = await pc.getStats();
+    st.forEach(r => { if(r && r.type === 'inbound-rtp' && r.kind === 'audio'){ achou = true; rx += (r.bytesReceived || 0); } });
+    return achou ? rx : null;
+  }catch(e){ return null; }
+}
+async function diagSalaTestar(){
+  const rows = document.getElementById('dgSalaRows'), hint = document.getElementById('dgSalaHint');
+  if(!rows) return;
+  if(!inRoom){
+    rows.innerHTML = '<div class="dgRow"><span>Você não está numa sala</span><b class="dgWarn">—</b></div>';
+    if(hint) hint.textContent = 'Entre numa sala de voz para testar.';
+    return;
+  }
+  const tr = localMic && localMic.getAudioTracks()[0];
+  const linhas = [];
+  linhas.push(['Microfone (seu)', !localMic ? 'não abriu' : (!tr || !tr.enabled ? 'silenciado' : 'ok'), !localMic ? 'dgBad' : (!tr || !tr.enabled ? 'dgWarn' : 'dgOk')]);
+  linhas.push(['Seu som', deafened ? 'ensurdecido' : 'ok', deafened ? 'dgWarn' : 'dgOk']);
+  // Endereço da sala no servidor: se este id estiver preso (ocupado e sem resposta), é ele que trava a entrada.
+  linhas.push([isDirectory ? 'Sala (você é o anfitrião)' : 'Endereço da sala',
+    'dir-' + roomId + (ultimaFalhaDir ? ' · ' + ultimaFalhaDir : ''),
+    isDirectory ? 'dgOk' : (ultimaFalhaDir === 'sem-resposta' ? 'dgWarn' : 'dgOk')]);
+  const gente = [...knownPeers.entries()].filter(([id]) => id !== myId);
+  if(!gente.length) linhas.push(['Ninguém na sala', 'aguardando', 'dgWarn']);
+  const bytes = await Promise.all(gente.map(([id]) => diagSalaBytes((incoming.get(id+'|mic') || {}).peerConnection)));
+  gente.forEach(([id, nome], k) => {
+    const inMic = incoming.get(id+'|mic'), outMic = (outgoing.get(id)||{}).mic;
+    const sc = incoming.get(id+'|screen') || (outgoing.get(id)||{}).screen;
+    const a = diagSalaStatus(inMic), b = diagSalaStatus(outMic);
+    const rx = bytes[k];
+    const ove = 'ouve: ' + a + (rx !== null && a === 'ok' ? ' (' + Math.round(rx / 1024) + ' kB)' : '') + ' · fala: ' + b + ' · tela: ' + diagSalaStatus(sc);
+    const ruim = a !== 'ok' && b !== 'ok';
+    linhas.push([nome || 'Participante', ove, ruim ? 'dgBad' : 'dgOk']);
+  });
+  rows.innerHTML = linhas.map(l => '<div class="dgRow"><span>' + esc(l[0]) + '</span><b class="' + l[2] + '">' + esc(l[1]) + '</b></div>').join('');
+  if(hint) hint.textContent = !localMic
+    ? 'O microfone não abriu neste app: clique no microfone da sala para tentar de novo.'
+    : ('failed/sem canal = a rede entre vocês não deixou passar a voz (com NAT restrito/CGNAT só um servidor TURN resolve). "ok" com 0 kB = o outro lado não está enviando. TURN: ' + (turnDoUsuario() ? 'o seu (configurado)' : 'padrão do app — se nada abrir, configure um em Configurações → Voz e vídeo') + '.');
 }
 document.addEventListener('keydown', e => { if(e.key === 'Escape') diagClose(); });
 window.addEventListener('pagehide', () => { try{ diagMicStop(); }catch(e){} });

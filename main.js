@@ -132,9 +132,58 @@ function turnConfigurado(){
   }
   return desktopCfg.turn || null;            // null = usa a credencial padrão do app (turn.js)
 }
-ipcMain.handle('desktop:iceServers', () => {
-  try{ return turn.iceServers(turnConfigurado()); }
-  catch(e){ return turn.iceServers(null); }
+// ---------- Cloudflare Realtime TURN (credenciais temporárias) ----------
+// A "TURN key" da Cloudflare NÃO serve como usuário/senha: ela é trocada por credenciais que expiram.
+// Guarde a chave em %appdata%/RONYZERA/configuracoes.json:
+//   "cloudflareTurn": { "keyId": "...", "token": "...", "ttl": 86400 }
+// ou na variável de ambiente RONYZERA_CF_TURN com o mesmo JSON. Sem isso, nada muda.
+const CF_GERA = 'https://rtc.live.cloudflare.com/v1/turn/keys/';
+let cfCache = { em: 0, ttl: 0, ice: null };
+function cfTurnConfigurado(){
+  const bruto = process.env.RONYZERA_CF_TURN;
+  if(bruto){
+    try{ const t = JSON.parse(bruto); if(t && t.keyId && t.token) return t; }catch(e){}
+  }
+  const c = desktopCfg.cloudflareTurn;
+  return (c && c.keyId && c.token) ? c : null;
+}
+async function cfIceServers(){
+  const cfg = cfTurnConfigurado();
+  if(!cfg) return null;
+  const ttl = Math.max(600, Math.min(172800, Number(cfg.ttl) || 86400));
+  // renova aos 80% do tempo: uma chamada longa não pode ficar sem relay no meio
+  if(cfCache.ice && Date.now() < cfCache.em + cfCache.ttl * 800) return cfCache.ice;
+  if(typeof fetch !== 'function') return cfCache.ice || null;
+  const ac = new AbortController();
+  const tm = setTimeout(() => ac.abort(), 8000);
+  try{
+    const r = await fetch(CF_GERA + encodeURIComponent(String(cfg.keyId)) + '/credentials/generate-ice-servers', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + String(cfg.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl }),
+      signal: ac.signal
+    });
+    const j = await r.json().catch(() => null);
+    if(!r.ok || !j || !j.iceServers) throw new Error('resposta ' + r.status);
+    const ice = Array.isArray(j.iceServers) ? j.iceServers : [j.iceServers];
+    // a porta 53 é bloqueada por muitos provedores: tira ela e mantém o resto
+    const limpo = ice.map(s => ({
+      ...s,
+      urls: (Array.isArray(s.urls) ? s.urls : [s.urls]).filter(u => !/:53(\?|$)/.test(String(u)))
+    })).filter(s => s.urls.length);
+    if(!limpo.length) throw new Error('sem iceServers utilizáveis');
+    cfCache = { em: Date.now(), ttl, ice: limpo };
+    return limpo;
+  }catch(e){
+    console.warn('Cloudflare TURN:', (e && e.message) || e);
+    return cfCache.ice || null;              // credencial anterior (se ainda válida) é melhor que nenhuma
+  }finally{ clearTimeout(tm); }
+}
+ipcMain.handle('desktop:iceServers', async () => {
+  let base;
+  try{ base = turn.iceServers(turnConfigurado()); }catch(e){ base = turn.iceServers(null); }
+  const cf = await cfIceServers();
+  return (cf && cf.length) ? cf.concat(base) : base;   // Cloudflare na frente; o resto fica de reserva
 });
 ipcMain.on('desktop:notify', (_e, title, body) => {
   if(!desktopCfg.notifications) return;                    // respeita o interruptor "Avisos do Windows"

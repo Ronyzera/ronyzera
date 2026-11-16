@@ -1,0 +1,10 @@
+[Unit]
+Description=RONYZERA - roda a atualizacao do external-ip a cada 5 minutos
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -6,6 +6,9 @@
 //   2) TURN comum: { urls, username, credential }           -> credencial fixa
 // Em %appdata%/RONYZERA/configuracoes.json use a chave "turn" ou defina a
 // variável de ambiente RONYZERA_TURN com o mesmo JSON.
+// Cloudflare Realtime TURN: a chave NÃO é usuário/senha — o main.js troca por credenciais
+// temporárias. Configure "cloudflareTurn": { keyId, token, ttl } no mesmo arquivo
+// (ou RONYZERA_CF_TURN com esse JSON).
 // No navegador/APK (sem processo principal) o index.html busca um "turn.json"
 // publicado ao lado do site, com { urls, username, credential }.
 // ============================================================
