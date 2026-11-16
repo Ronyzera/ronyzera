@@ -3,7 +3,7 @@ name: APK RONYZERA
 on:
   push:
     branches: [main]
-    paths: ['index.html', 'apk-version.txt', 'vendor/**', '.github/workflows/apk.yml']
+    paths: ['index.html', 'apk-version.txt', '.github/workflows/apk.yml']
   workflow_dispatch:
 
 permissions:
@@ -25,16 +25,9 @@ jobs:
           npm i --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
 
       - name: Montar projeto android
-        env:
-          TURN_JSON: ${{ secrets.TURN_JSON }}
         run: |
           mkdir -p www
           cp index.html www/index.html
-          cp -r vendor www/
-          if [ -n "$TURN_JSON" ]; then
-            printf '%s' "$TURN_JSON" > www/turn.json
-            sed -i 's|</head>|<meta name="ronyzera-turn" content="turn.json">\n</head>|' www/index.html
-          fi
           npx cap add android 2>&1 | tee -a cap-add.log
           tail -n 50 cap-add.log > $GITHUB_STEP_SUMMARY
 
@@ -67,8 +60,8 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          bash gradlew :app:assembleRelease --no-daemon > ../gradle.log 2>&1 || { tail -n 120 ../gradle.log; exit 1; }
-          tail -n 40 ../gradle.log
+          bash gradlew :app:assembleRelease --no-daemon 2>&1 | tee -a ../gradle.log
+          tail -n 60 ../gradle.log > $GITHUB_STEP_SUMMARY
 
       - name: Renomear APK
         run: |

@@ -3,7 +3,7 @@ name: PWA RONYZERA (GitHub Pages)
 on:
   push:
     branches: [main]
-    paths: ['index.html', 'manifest.json', 'ronyzera-icon-*.png', 'vendor/**', '.github/workflows/pwa.yml']
+    paths: ['index.html', 'manifest.json', 'ronyzera-icon-*.png', '.github/workflows/pwa.yml']
   workflow_dispatch:
 
 permissions:
@@ -25,16 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Montar site
-        env:
-          TURN_JSON: ${{ secrets.TURN_JSON }}
         run: |
           mkdir -p _site
           cp index.html manifest.json ronyzera-icon-*.png _site/
-          cp -r vendor _site/
-          if [ -n "$TURN_JSON" ]; then
-            printf '%s' "$TURN_JSON" > _site/turn.json
-            sed -i 's|</head>|<meta name="ronyzera-turn" content="turn.json">\n</head>|' _site/index.html
-          fi
           ls -la _site
       - uses: actions/upload-pages-artifact@v3
         with:

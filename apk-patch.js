@@ -87,3 +87,20 @@ if (fs.existsSync(ASSETS)) {
   console.log('aviso: apk-assets/ ausente — mantendo ícones default');
 }
 console.log('icones: ' + copied + ' arquivos aplicados');
+
+// 5) Pasta vendor/ dentro do APK: o workflow do GitHub monta o www/ só com o index.html,
+//    então o peerjs.min.js precisa entrar depois do "cap add android" e antes do Gradle.
+//    (É por isso que o APK antigo abria sem sinalização.)
+const WEB = path.join('android', 'app', 'src', 'main', 'assets', 'public');
+if (fs.existsSync('vendor') && fs.existsSync(WEB)) {
+  const dst = path.join(WEB, 'vendor');
+  fs.mkdirSync(dst, { recursive: true });
+  let n = 0;
+  for (const f of fs.readdirSync('vendor')) {
+    const src = path.join('vendor', f);
+    if (fs.statSync(src).isFile()) { fs.copyFileSync(src, path.join(dst, f)); n++; }
+  }
+  console.log('vendor: ' + n + ' arquivos copiados para ' + dst);
+} else {
+  console.log('aviso: vendor/ ou assets/public ausente — o APK usaria o CDN');
+}

@@ -1282,6 +1282,9 @@ font-weight:600;font-size:.72rem;color:var(--muted)}
 
 <!-- PeerJS cuida de toda a sinalização WebRTC (SDP/ICE) via o broker público gratuito da PeerJS Cloud -->
 <script src="vendor/peerjs.min.js"></script>
+<!-- Site/APK publicados sem a pasta vendor/ (o build do GitHub copia só o index.html): busca a mesma
+     versão no CDN. No app instalado o arquivo local existe e isto não faz nada. -->
+<script>if(!window.Peer) document.write('<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"><\/script>');</script>
 <script>
 const $ = id => document.getElementById(id);
 // mobile (APK/celular): transmitir tela não existe no Android — mas assistir a transmissão dos outros funciona; esconde só os botões de emissão
