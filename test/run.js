@@ -11,6 +11,8 @@ const suites = [
   require('./voz.test.js'),
   require('./presenca.test.js'),
   require('./tela.test.js'),
+  require('./celular.test.js'),
+  require('./controle.test.js'),
   require('./midia.test.js'),
   require('./sala-presa.test.js'),
   require('./turn.test.js')

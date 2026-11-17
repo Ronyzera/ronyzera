@@ -5210,10 +5210,19 @@ const SCREEN_PEDIDO_MAX_MS = 30000; // desiste depois de 30s e mostra o aviso pa
 const screenWatchers = new Set();  // (transmissor) espectadores que pediram para assistir minha tela
 const ctlOut = new Map();          // canal de controle que EU abri -> peerId
 const ctlIn = new Map();           // canal de controle que o OUTRO abriu -> peerId
+const CTL_ESPERA_MS = 5000;        // canal que não abre nesse tempo é considerado morto
 function ctlGet(id){
   let c = ctlOut.get(id);
+  // Um canal que ficou preso em "conectando" (rede trocou de caminho, TURN entrou no meio)
+  // nunca abre e nunca fecha: antes ele ficava guardado para sempre e TODA mensagem era
+  // perdida em silêncio (era isso que impedia o pedido de "ver a tela" de chegar).
+  if(c && !c.open && c._criado && Date.now() - c._criado > CTL_ESPERA_MS){
+    try{ c.close(); }catch(e){}
+    ctlOut.delete(id); c = null;
+  }
   if(!c){
     c = peer.connect(id, { metadata: { role: 'ctl' } });
+    c._criado = Date.now();
     ctlOut.set(id, c);
     c.on('data', d => handleCtlData(id, d));
     const drop = () => { if(ctlOut.get(id) === c) ctlOut.delete(id); };
@@ -5221,9 +5230,25 @@ function ctlGet(id){
   }
   return c;
 }
-function ctlSend(id, msg){
+// Envia pelo canal de controle. Se o canal não abrir, tenta de novo com um canal novo
+// (antes a mensagem ficava esperando um "open" que nunca vinha e era descartada).
+function ctlSend(id, msg, tentativa){
+  tentativa = tentativa || 0;
   const c = ctlGet(id);
-  if(c.open) c.send(msg); else c.once('open', () => c.send(msg));
+  if(c.open){ try{ c.send(msg); return true; }catch(e){} }
+  let enviado = false;
+  try{
+    c.once('open', () => { if(enviado) return; enviado = true; try{ c.send(msg); }catch(e){} });
+  }catch(e){}
+  setTimeout(() => {
+    if(enviado || leaving) return;
+    if(tentativa >= 3) return;                 // desiste depois de 3 tentativas (o chamador repete)
+    const atual = ctlOut.get(id);
+    if(atual === c){ try{ c.close(); }catch(e){} ctlOut.delete(id); }
+    if(c.open) return;                          // abriu nesse meio tempo: já foi
+    ctlSend(id, msg, tentativa + 1);
+  }, 900);
+  return false;
 }
 // (transmissor) manda a tela para quem pediu para assistir. Antes exigia que a pessoa já estivesse em
 // knownPeers — quem tinha acabado de entrar (roster ainda sincronizando) pedia e não recebia nada.
@@ -6678,6 +6703,7 @@ async function startCall(){
   soltarIdsDaSala();
   if(micRetryTimer){ clearTimeout(micRetryTimer); micRetryTimer = null; }
   inRoom = true;
+  manterTelaAcordada(true);        // celular: não deixa a tela apagar no meio da chamada
   $('callCard').classList.remove('lobby');
   $('leaveBtn').title = 'Sair da sala';
   $('stageEmptyMsg').textContent = STAGE_EMPTY_TXT;
@@ -7036,6 +7062,29 @@ $('screenBtn').onclick = () => {
 };
 $('screenStartBtn').onclick = screenToggle;
 
+// Celular (APK/PWA): o Android congela a página quando a tela apaga, o WebRTC morre e a pessoa
+// cai da sala. Enquanto se está numa sala, pedimos ao sistema para não apagar a tela.
+// (Screen Wake Lock; sem suporte, não faz nada.)
+let telaAcordada = null;
+function ehCelular(){
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') ||
+         !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+}
+async function manterTelaAcordada(ligar){
+  try{
+    if(!navigator.wakeLock || typeof navigator.wakeLock.request !== 'function') return;
+    if(!ligar){
+      if(telaAcordada){ try{ await telaAcordada.release(); }catch(e){} telaAcordada = null; }
+      return;
+    }
+    if(telaAcordada && !telaAcordada.released) return;
+    telaAcordada = await navigator.wakeLock.request('screen');
+    telaAcordada.addEventListener('release', () => { telaAcordada = null; });
+  }catch(e){ telaAcordada = null; }
+}
+// Ao voltar do segundo plano o sistema já soltou a trava: pede de novo.
+document.addEventListener('visibilitychange', () => { if(!document.hidden && inRoom) manterTelaAcordada(true); });
+
 function leaveRoom(){
   if(leaving) return;                // evita rodar duas vezes (botão Sair + pagehide) e derrubar quem entra logo depois
   joinSeq++;                         // invalida uma entrada em andamento (não pode sobrar peer nosso com "dir-<sala>")
@@ -7055,6 +7104,7 @@ function leaveRoom(){
   try{ nsStop(); }catch(e){}
   if(peer) peer.destroy();
   peer = null; dirConn = null; dirPeer = null; dirOwnerId = null; isDirectory = false; joinedRoom = false; inRoom = false;
+  manterTelaAcordada(false);          // saiu da sala: a tela pode voltar a apagar normalmente
   dirLocalId = '';
   knownPeers.clear();
 }
@@ -7199,6 +7249,13 @@ async function diagRedeTestar(){
 }
 // "Testar sala": mostra o estado real (ICE) de cada canal de voz/tela com cada pessoa.
 // Serve para saber se o problema é a rede entre vocês (failed/sem canal) ou o microfone local.
+// Mostra também o canal de controle (ctl): é por ele que viaja o pedido de "ver a tela".
+function ctlEstado(id){
+  const c = ctlOut.get(id) || ctlIn.get(id);
+  if(!c) return 'sem canal';
+  if(c.open) return 'ok';
+  return (c._criado && Date.now() - c._criado > CTL_ESPERA_MS) ? 'preso' : 'abrindo';
+}
 function diagSalaStatus(c){
   if(!c) return 'sem canal';
   const pc = c.peerConnection;
@@ -7254,7 +7311,7 @@ async function diagSalaTestar(){
     const sc = incoming.get(id+'|screen') || (outgoing.get(id)||{}).screen;
     const a = diagSalaStatus(inMic), b = diagSalaStatus(outMic);
     const rx = bytes[k];
-    const ove = 'ouve: ' + a + (rx !== null && a === 'ok' ? ' (' + Math.round(rx / 1024) + ' kB)' : '') + ' · fala: ' + b + ' · tela: ' + diagSalaStatus(sc);
+    const ove = 'ouve: ' + a + (rx !== null && a === 'ok' ? ' (' + Math.round(rx / 1024) + ' kB)' : '') + ' · fala: ' + b + ' · tela: ' + diagSalaStatus(sc) + ' · ctl: ' + ctlEstado(id);
     const ruim = a !== 'ok' && b !== 'ok';
     linhas.push([nome || 'Participante', ove, ruim ? 'dgBad' : 'dgOk']);
   });
@@ -7297,7 +7354,16 @@ $('leaveBtn').onclick = () => {
 };
 // Ao fechar a janela/recarregar, sai da sala avisando os outros. Se a página foi só guardada
 // no cache de navegação (bfcache), NÃO saímos: ao voltar, a sala continua conectada.
-window.addEventListener('pagehide', e => { if(!e || !e.persisted) leaveRoom(); });
+// ATENÇÃO: no celular (APK/PWA) o "pagehide" também dispara quando a tela bloqueia ou o app vai
+// para segundo plano — e sair da sala ali derrubava a pessoa sem ela ter pedido. No celular só
+// saímos se o app estiver realmente fechando (beforeunload); minimizar/bloquear mantém a sala.
+let fechandoDeVerdade = false;
+window.addEventListener('beforeunload', () => { fechandoDeVerdade = true; try{ leaveRoom(); }catch(e){} });
+window.addEventListener('pagehide', e => {
+  if(fechandoDeVerdade) return;
+  if(e && e.persisted) return;      // bfcache: volta exatamente como estava
+  if(!ehCelular()) leaveRoom();     // PC: fechar a janela sai da sala como antes
+});
 
 // Ao abrir o site: lembra seu nome; com login salvo (ou link ?sala=...) entra direto
 (function autoJoin(){
